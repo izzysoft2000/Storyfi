@@ -1,0 +1,516 @@
+/**
+ * src/store/playback.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Pinia store for audio playback. Owns transport state (isPlaying, currentMs,
+ * etc.) and drives editor highlight sync via a requestAnimationFrame loop.
+ *
+ * CRITICAL: All Web Audio objects (AudioContext, AudioBufferSourceNode,
+ * AudioBuffer[]) live in MODULE-LEVEL variables — never in Pinia reactive
+ * state. Vue Proxy-wrapping these objects causes silent failures.
+ * Same pattern as Bug Fix #4 (resizable pane DOM-only during drag).
+ *
+ * CRITICAL: All imports are static at the top level. No dynamic import()
+ * calls inside async functions or loops (Bug Fix #6).
+ */
+
+import { defineStore } from 'pinia'
+import { getAudioStitched } from './db.js'
+import { formatDuration } from '../audio/timestamps.js'
+
+// ─── Module-level Web Audio internals (non-reactive) ──────────────────────────
+
+/** @type {AudioContext|null} */
+let _audioCtx = null
+
+/** @type {(AudioBuffer|null)[]} Indexed parallel to the groups array passed to loadAndPlay() */
+let _buffers = []
+
+/** @type {AudioBufferSourceNode|null} Currently playing source node */
+let _source = null
+
+/** audioCtx.currentTime captured when source.start() was called (for elapsed-time math) */
+let _startedAtCtx = 0
+
+/** Global ms offset of the currently playing group's start in the master timeline */
+let _segmentOffsetMs = 0
+
+/** requestAnimationFrame ID */
+let _rafId = null
+
+/** Snapshot of paragraphGroups[] passed to loadAndPlay() */
+let _groups = null
+
+/**
+ * Cache of computed word→editor positions.
+ * Map<sentenceId, WordPosition[] | false>
+ * `false` means "computed but nothing found" — avoids re-computing on every frame.
+ */
+let _wordPositionCache = new Map()
+
+/**
+ * Reference to the StoryEditor component instance.
+ * Must expose: highlightWord(from, to), highlightSentence(from, to),
+ *              clearHighlight(), getEditor() → Tiptap Editor instance
+ */
+let _editorRef = null
+
+// ─── Pure helpers (no Vue/Pinia dependency) ───────────────────────────────────
+
+/**
+ * Find the sentence in a group whose time window contains `groupLocalMs`.
+ * Clamps to the last sentence to handle float drift at end of group.
+ *
+ * @param {object} group - ParagraphGroup with sentences[]
+ * @param {number} groupLocalMs - ms elapsed since group start
+ * @returns {object|null} Sentence
+ */
+function findCurrentSentence(group, groupLocalMs) {
+  const sentences = group?.sentences
+  if (!sentences?.length) return null
+  for (const s of sentences) {
+    if (groupLocalMs >= (s.startMs ?? 0) && groupLocalMs < (s.endMs ?? Infinity)) {
+      return s
+    }
+  }
+  // Past end — return last sentence (handles duration float drift)
+  return sentences[sentences.length - 1] ?? null
+}
+
+/**
+ * Map word timings to ProseMirror editor positions using sequential indexOf
+ * within the sentence's editor range. Called once per sentence, result cached.
+ *
+ * MiniMax word_info shape: { word: string, start_ms: number, end_ms: number }
+ *
+ * @param {import('@tiptap/core').Editor} editor - Tiptap editor instance
+ * @param {object} sentence - Sentence with wordTimings[], editorFrom, editorTo
+ * @returns {Array<{start_ms, end_ms, editorFrom, editorTo}>|null}
+ */
+function computeWordEditorPositions(editor, sentence) {
+  if (!sentence.wordTimings?.length || sentence.editorFrom == null) return null
+
+  try {
+    const docSize = editor.state.doc.content.size
+    const safeFrom = Math.max(0, sentence.editorFrom)
+    const safeTo = Math.min(sentence.editorTo ?? docSize, docSize)
+    if (safeFrom >= safeTo) return null
+
+    // textBetween with '\0' block separator avoids joining across nodes
+    const docText = editor.state.doc.textBetween(safeFrom, safeTo, '\0', '\0')
+    const result = []
+    let cursor = 0
+
+    for (const wt of sentence.wordTimings) {
+      const word = (wt.word ?? '').trim()
+      if (!word) continue
+
+      const idx = docText.indexOf(word, cursor)
+      if (idx === -1) continue // word not found — skip (punctuation variance)
+
+      result.push({
+        start_ms: wt.start_ms ?? 0,
+        end_ms: wt.end_ms ?? 0,
+        editorFrom: safeFrom + idx,
+        editorTo: safeFrom + idx + word.length,
+      })
+      cursor = idx + word.length
+    }
+
+    return result.length ? result : null
+  } catch (_) {
+    return null
+  }
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+
+export const usePlaybackStore = defineStore('playback', {
+  state: () => ({
+    /** Whether audio is currently emitting sound */
+    isPlaying: false,
+
+    /** Whether playback is paused mid-session (AudioContext suspended) */
+    isPaused: false,
+
+    /** Whether buffers are being loaded/decoded from IndexedDB */
+    isLoading: false,
+
+    /** Non-null if loading or playback failed */
+    loadError: null,
+
+    /**
+     * Index into groupOffsets[] / _groups[] for the currently playing group.
+     * -1 when stopped.
+     */
+    currentGroupIdx: -1,
+
+    /** sentenceId of the sentence currently under the playhead — for row highlighting */
+    currentSentenceId: null,
+
+    /** Master timeline position in ms — updated every RAF tick */
+    currentMs: 0,
+
+    /** Total duration of all stitched groups in ms */
+    totalMs: 0,
+
+    /**
+     * Offset table built during loadAndPlay().
+     * Readable by components for seek / row highlighting.
+     * Shape: [{ groupId, groupIdx, startMs, endMs, hasAudio }]
+     */
+    groupOffsets: [],
+  }),
+
+  // ─── Getters ───────────────────────────────────────────────────────────────
+
+  getters: {
+    /** 0–1 fractional progress through the full timeline */
+    progress: (state) => (state.totalMs > 0 ? state.currentMs / state.totalMs : 0),
+
+    /** true if at least one group has been decoded successfully */
+    hasAudio: (state) => state.totalMs > 0,
+
+    /** Human-readable current time, e.g. "1:23" */
+    currentTimeDisplay: (state) => formatDuration(state.currentMs),
+
+    /** Human-readable total time, e.g. "4:07" */
+    totalTimeDisplay: (state) => formatDuration(state.totalMs),
+  },
+
+  // ─── Actions ───────────────────────────────────────────────────────────────
+
+  actions: {
+    // ── External wiring ──────────────────────────────────────────────────────
+
+    /**
+     * Called by EditorView.vue after the StoryEditor component mounts.
+     * The ref must expose: highlightWord, highlightSentence, clearHighlight, getEditor.
+     */
+    setEditorRef(ref) {
+      _editorRef = ref
+    },
+
+    // ── Main entry point ─────────────────────────────────────────────────────
+
+    /**
+     * Load stitched audio for all groups from IndexedDB, decode into AudioBuffers,
+     * then begin sequential playback starting at `startGroupIdx`.
+     *
+     * Safe to call while already playing — stops current playback first.
+     *
+     * @param {object[]} groups - project.paragraphGroups
+     * @param {number} [startGroupIdx=0]
+     */
+    async loadAndPlay(groups, startGroupIdx = 0) {
+      this._cleanup()
+      this.isLoading = true
+      this.loadError = null
+
+      _groups = groups
+      _wordPositionCache = new Map()
+
+      try {
+        // AudioContext must be created (or resumed) inside a user gesture handler.
+        if (!_audioCtx || _audioCtx.state === 'closed') {
+          _audioCtx = new AudioContext()
+        } else if (_audioCtx.state === 'suspended') {
+          await _audioCtx.resume()
+        }
+
+        _buffers = new Array(groups.length).fill(null)
+        const offsets = []
+        let ms = 0
+
+        for (let i = 0; i < groups.length; i++) {
+          const group = groups[i]
+          const startMs = ms
+          let hasAudio = false
+
+          try {
+            const blob = await getAudioStitched(group.id)
+            if (blob) {
+              const arrayBuf = await blob.arrayBuffer()
+              // decodeAudioData can hang on certain MP3s — wrapped in a 10s timeout
+              const audioBuf = await Promise.race([
+                _audioCtx.decodeAudioData(arrayBuf),
+                new Promise((_, rej) =>
+                  setTimeout(() => rej(new Error('decodeAudioData timeout')), 10_000)
+                ),
+              ])
+              _buffers[i] = audioBuf
+              ms += audioBuf.duration * 1000
+              hasAudio = true
+            }
+          } catch (err) {
+            console.warn(`[playback] Could not decode group ${group.id}:`, err)
+          }
+
+          offsets.push({ groupId: group.id, groupIdx: i, startMs, endMs: ms, hasAudio })
+        }
+
+        this.groupOffsets = offsets
+        this.totalMs = ms
+        this.isLoading = false
+
+        if (ms === 0) {
+          this.loadError = 'No generated audio found. Run Generate first.'
+          return
+        }
+
+        this._startGroup(startGroupIdx)
+      } catch (err) {
+        this.isLoading = false
+        this.loadError = err?.message ?? 'Playback failed'
+        console.error('[playback]', err)
+      }
+    },
+
+    // ── Transport controls ────────────────────────────────────────────────────
+
+    pause() {
+      if (!this.isPlaying || this.isPaused) return
+      _audioCtx?.suspend()
+      this._stopRaf()
+      this.isPlaying = false
+      this.isPaused = true
+    },
+
+    resume() {
+      if (!this.isPaused) return
+      _audioCtx?.resume()
+      this.isPlaying = true
+      this.isPaused = false
+      this._startRaf()
+    },
+
+    togglePlayPause() {
+      if (this.isPaused) this.resume()
+      else if (this.isPlaying) this.pause()
+      // If stopped: caller should invoke loadAndPlay()
+    },
+
+    stop() {
+      this._cleanup()
+      _editorRef?.clearHighlight?.()
+    },
+
+    /**
+     * Jump playback to the start of a group.
+     * If stopped, just repositions the playhead display.
+     * If playing or paused, immediately seeks and resumes.
+     *
+     * @param {number} groupIdx
+     */
+    seekToGroup(groupIdx) {
+      if (!_groups || groupIdx < 0 || groupIdx >= _groups.length) return
+
+      // Advance past any groups without decoded audio
+      let idx = groupIdx
+      while (idx < _buffers.length && !_buffers[idx]) idx++
+      if (idx >= _buffers.length) return
+
+      if (this.isPlaying || this.isPaused) {
+        if (_audioCtx?.state === 'suspended') _audioCtx.resume()
+        this._startGroupAtOffset(idx, 0)
+      } else {
+        // Pre-position display without playing
+        this.currentMs = this.groupOffsets[idx]?.startMs ?? 0
+        this.currentGroupIdx = idx
+      }
+    },
+
+    /**
+     * Seek to an arbitrary ms position in the master timeline.
+     * Works both while playing and while stopped/paused.
+     *
+     * @param {number} ms
+     */
+    seekToMs(ms) {
+      if (!_groups) return
+      const offset = this.groupOffsets.find(
+        (o) => o?.hasAudio && ms >= o.startMs && ms <= o.endMs
+      )
+      if (!offset) return
+
+      const offsetInGroup = Math.max(0, ms - offset.startMs)
+
+      if (this.isPlaying || this.isPaused) {
+        if (_audioCtx?.state === 'suspended') _audioCtx.resume()
+        this._startGroupAtOffset(offset.groupIdx, offsetInGroup)
+      } else {
+        this.currentMs = ms
+        this.currentGroupIdx = offset.groupIdx
+      }
+    },
+
+    // ── Internal: audio scheduling ────────────────────────────────────────────
+
+    /**
+     * Start playing from `groupIdx`, advancing past any groups without audio.
+     * @param {number} groupIdx
+     */
+    _startGroup(groupIdx) {
+      this._stopSourceNode()
+
+      let idx = groupIdx
+      while (idx < _buffers.length && !_buffers[idx]) idx++
+
+      if (idx >= _buffers.length) {
+        this._onPlaybackEnded()
+        return
+      }
+
+      this._startGroupAtOffset(idx, 0)
+    },
+
+    /**
+     * Start playing group `groupIdx` starting `offsetMs` into its buffer.
+     * @param {number} groupIdx
+     * @param {number} offsetMs - offset within this group's buffer in ms
+     */
+    _startGroupAtOffset(groupIdx, offsetMs) {
+      this._stopSourceNode()
+
+      const buf = _buffers[groupIdx]
+      if (!buf) {
+        this._startGroup(groupIdx + 1)
+        return
+      }
+
+      const offsetSec = Math.max(0, offsetMs / 1000)
+      const src = _audioCtx.createBufferSource()
+      src.buffer = buf
+      src.connect(_audioCtx.destination)
+
+      // onended fires when the buffer finishes naturally.
+      // Guard with isPlaying to avoid chaining after explicit stop().
+      src.onended = () => {
+        if (this.isPlaying) this._startGroup(groupIdx + 1)
+      }
+
+      _source = src
+      _startedAtCtx = _audioCtx.currentTime - offsetSec
+      _segmentOffsetMs = this.groupOffsets[groupIdx]?.startMs ?? 0
+
+      this.currentGroupIdx = groupIdx
+      this.isPlaying = true
+      this.isPaused = false
+
+      src.start(0, offsetSec)
+      this._startRaf()
+    },
+
+    _stopSourceNode() {
+      if (_source) {
+        try {
+          _source.onended = null // prevent chaining
+          _source.stop()
+        } catch (_) {
+          // stop() throws if source hasn't started yet — safe to ignore
+        }
+        _source = null
+      }
+    },
+
+    _onPlaybackEnded() {
+      this._stopRaf()
+      this.isPlaying = false
+      this.isPaused = false
+      this.currentGroupIdx = -1
+      this.currentMs = this.totalMs // show full duration at end
+      _editorRef?.clearHighlight?.()
+    },
+
+    _cleanup() {
+      this._stopSourceNode()
+      this._stopRaf()
+      this.isPlaying = false
+      this.isPaused = false
+      this.currentGroupIdx = -1
+      this.currentMs = 0
+      this.currentSentenceId = null
+    },
+
+    // ── RAF loop ──────────────────────────────────────────────────────────────
+
+    _startRaf() {
+      this._stopRaf()
+      const tick = () => {
+        if (!this.isPlaying || !_audioCtx) return
+        // Compute master timeline position from AudioContext clock (drift-free)
+        const elapsedSec = _audioCtx.currentTime - _startedAtCtx
+        this.currentMs = _segmentOffsetMs + elapsedSec * 1000
+        this._syncHighlight()
+        _rafId = requestAnimationFrame(tick)
+      }
+      _rafId = requestAnimationFrame(tick)
+    },
+
+    _stopRaf() {
+      if (_rafId !== null) {
+        cancelAnimationFrame(_rafId)
+        _rafId = null
+      }
+    },
+
+    // ── Highlight sync ────────────────────────────────────────────────────────
+
+    /**
+     * Called every RAF tick. Determines the current sentence (and word if
+     * MiniMax word timings are present) and dispatches to StoryEditor.
+     */
+    _syncHighlight() {
+      if (!_editorRef || !_groups) return
+
+      const offset = this.groupOffsets[this.currentGroupIdx]
+      if (!offset) return
+
+      const group = _groups[this.currentGroupIdx]
+      if (!group) return
+
+      const groupLocalMs = this.currentMs - offset.startMs
+      const sentence = findCurrentSentence(group, groupLocalMs)
+
+      if (!sentence) {
+        _editorRef.clearHighlight?.()
+        return
+      }
+
+      // Update reactive sentence ID for playlist row highlighting
+      if (this.currentSentenceId !== sentence.id) {
+        this.currentSentenceId = sentence.id
+      }
+
+      // ── Word-level highlight (MiniMax only) ──────────────────────────────
+
+      if (sentence.wordTimings?.length > 0 && sentence.editorFrom != null) {
+        let positions = _wordPositionCache.get(sentence.id)
+
+        if (positions === undefined) {
+          // Compute once per sentence per playback session
+          const editor = _editorRef.getEditor?.()
+          positions = editor ? computeWordEditorPositions(editor, sentence) : null
+          // Cache as `false` (not null) to mark "computed but empty"
+          _wordPositionCache.set(sentence.id, positions ?? false)
+        }
+
+        if (positions) {
+          const sentenceLocalMs = groupLocalMs - (sentence.startMs ?? 0)
+          const wt = positions.find(
+            (w) => sentenceLocalMs >= w.start_ms && sentenceLocalMs < w.end_ms
+          )
+          if (wt) {
+            _editorRef.highlightWord?.(wt.editorFrom, wt.editorTo)
+            return
+          }
+        }
+      }
+
+      // ── Sentence-level fallback ───────────────────────────────────────────
+
+      if (sentence.editorFrom != null) {
+        _editorRef.highlightSentence?.(sentence.editorFrom, sentence.editorTo)
+      }
+    },
+  },
+})
