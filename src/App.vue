@@ -38,12 +38,6 @@ const installEvent = ref(null)
 onMounted(() => {
   parseHash()
   window.addEventListener('hashchange', onHashChange)
-  
-  // Capture the browser's install prompt
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault()
-    installEvent.value = e
-  })
 })
 
 async function triggerInstall() {
@@ -109,6 +103,7 @@ onUnmounted(() => {
 
 html, body {
   height: 100%;
+  min-height: 100dvh;        /* fills full viewport on iOS */
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-ui);
@@ -116,7 +111,11 @@ html, body {
   overflow: hidden;
 }
 
-#app { height: 100% }
+#app {
+  height: 100%;
+  min-height: 100dvh;
+  background: var(--color-bg); /* prevents any gap showing as white/transparent */
+}
 
 /* ─── Scrollbar Styling ───────────────────────────────── */
 ::-webkit-scrollbar              { width: 6px; height: 6px }
