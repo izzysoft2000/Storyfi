@@ -593,7 +593,7 @@ function relativeDate(ts) {
 
 /* Fills the iPhone home indicator zone */
 .library__safe-bottom {
-  height: env(safe-area-inset-bottom, 20px);
+  height: env(safe-area-inset-bottom, 40px);
   background: var(--color-bg);
   flex-shrink: 0;
 }

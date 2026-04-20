@@ -994,7 +994,7 @@ function goLibrary() { emit('go-library') }
 
 .m-workspace {
   position: fixed;
-  inset: 0;                   /* anchors all 4 edges — guaranteed edge-to-edge on iOS */
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1158,7 +1158,7 @@ function goLibrary() { emit('go-library') }
 
 /* Fills the iPhone home indicator zone with the bar's background color */
 .m-safe-bottom {
-  height: env(safe-area-inset-bottom, 20px);
+  height: env(safe-area-inset-bottom, 40px);
   background: var(--color-surface);
   flex-shrink: 0;
 }
