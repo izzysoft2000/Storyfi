@@ -4,7 +4,6 @@
   "description": "Multi-voice audio production from Markdown",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "landscape-primary",
   "theme_color": "#1a1625",
   "background_color": "#0e0c18",
   "icons": [
