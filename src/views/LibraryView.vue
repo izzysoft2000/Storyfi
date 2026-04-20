@@ -355,9 +355,11 @@ function relativeDate(ts) {
 
 <style scoped>
 .library {
+  position: fixed;
+  inset: 0;                   /* anchors all 4 edges — guaranteed edge-to-edge on iOS */
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  overflow: hidden;
   background: var(--color-bg);
   color: var(--color-text);
   padding-top: env(safe-area-inset-top);

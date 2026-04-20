@@ -103,7 +103,6 @@ onUnmounted(() => {
 
 html, body {
   height: 100%;
-  min-height: 100dvh;        /* fills full viewport on iOS */
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-ui);
@@ -112,9 +111,9 @@ html, body {
 }
 
 #app {
-  height: 100%;
-  min-height: 100dvh;
-  background: var(--color-bg); /* prevents any gap showing as white/transparent */
+  position: fixed;
+  inset: 0;
+  background: var(--color-bg);
 }
 
 /* ─── Scrollbar Styling ───────────────────────────────── */

@@ -991,13 +991,12 @@ function goLibrary() { emit('go-library') }
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .m-workspace {
+  position: fixed;
+  inset: 0;                   /* anchors all 4 edges — guaranteed edge-to-edge on iOS */
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  width: 100%;
   overflow: hidden;
   background: var(--color-bg);
-  position: relative;
   padding-top: env(safe-area-inset-top);
   box-sizing: border-box;
 }
