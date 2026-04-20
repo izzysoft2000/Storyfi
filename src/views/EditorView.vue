@@ -1158,7 +1158,7 @@ function goLibrary() { emit('go-library') }
 
 /* Fills the iPhone home indicator zone with the bar's background color */
 .m-safe-bottom {
-  height: env(safe-area-inset-bottom, 40px);
+  height: env(safe-area-inset-bottom, 0px);
   background: var(--color-surface);
   flex-shrink: 0;
 }
