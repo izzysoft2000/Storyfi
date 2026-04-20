@@ -357,13 +357,18 @@ function relativeDate(ts) {
 .library {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;          /* dvh respects virtual keyboard on mobile */
   background: var(--color-bg);
   color: var(--color-text);
+  /* Push content away from iPhone status bar and home indicator */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
 }
 
 /* ─── Header ─────────────────────────────────────────── */
-.library__header {
+.library__header,
+.library-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -583,6 +588,10 @@ function relativeDate(ts) {
   padding: 16px 48px;
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .library__footer { padding: 12px 16px; }
 }
 
 /* ─── Modal ──────────────────────────────────────────── */

@@ -998,6 +998,10 @@ function goLibrary() { emit('go-library') }
   overflow: hidden;
   background: var(--color-bg);
   position: relative;
+  /* Push content below status bar and above home indicator */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
 }
 
 /* ─── Top bar ──────────────────────────────────────────────────────────────── */
@@ -1150,7 +1154,6 @@ function goLibrary() { emit('go-library') }
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
   gap: 2px;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .m-nav-btn {
