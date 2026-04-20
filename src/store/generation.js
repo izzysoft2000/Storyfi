@@ -165,124 +165,129 @@ export const useGenerationStore = defineStore('generation', () => {
    *
    * @param {{ providerId, charLimit, doc, onFolderPrompt }} opts
    */
-  async function generateAll({ providerId, charLimit = 250, doc, onFolderPrompt }) {
-    if (isGenerating.value) return
-    if (!doc) throw new Error('Editor doc is required')
+// ─── Main generate function (Upgraded for Multi-Provider & Advanced Settings) ───
+async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc, onFolderPrompt }) {
+  if (isGenerating.value) return
+  if (!doc) throw new Error('Editor doc is required')
 
-    const provider = getProvider(providerId)
-    if (!provider) throw new Error(`Provider "${providerId}" not registered`)
+  // Build/update groups from current doc
+  buildGroupsFromDoc(doc, charLimit)
 
-    // Build/update groups from current doc
-    buildGroupsFromDoc(doc, charLimit)
+  // Collect pending sentences
+  const pendingSentences = groups.value
+    .flatMap(g => g.sentences ?? [])
+    .filter(s => s.status === 'pending' || s.status === 'error')
 
-    // Resolve API key
-    let apiKey
-    try {
-      apiKey = await resolveApiKey(providerId)
-    } catch (err) {
-      if (err.message === 'API_KEY_LOCKED') {
-        currentError.value = 'API key is locked — enter your password in Settings.'
-      } else {
-        currentError.value = err.message
-      }
-      throw err
-    }
+  if (pendingSentences.length === 0) return
 
-    // Check if output folder prompt is needed
-    const project = projectStore.project
-    if (
-      project &&
-      !project.outputFolderHandle &&
-      !project.outputFolderPromptDismissed &&
-      onFolderPrompt
-    ) {
-      await onFolderPrompt() // resolves when user picks folder or skips
-    }
-
-    // Collect pending sentences
-    const pendingSentences = groups.value
-      .flatMap(g => g.sentences ?? [])
-      .filter(s => s.status === 'pending' || s.status === 'error')
-
-    if (pendingSentences.length === 0) return
-
-    isGenerating.value  = true
-    totalCount.value    = pendingSentences.length
-    doneCount.value     = 0
-    failCount.value     = 0
-    currentError.value  = null
-
-    // Build generation tasks
-    const tasks = pendingSentences.map(sentence => async () => {
-      setSentenceStatus(sentence.id, 'generating')
-
-      const role = projectStore.cast.find(r => r.id === sentence.roleId)
-      const voiceId = role?.voiceAssignment?.voiceId
-
-      if (!voiceId) {
-        setSentenceStatus(sentence.id, 'error',
-          `No voice assigned to role "${role?.label ?? sentence.roleId}"`)
-        failCount.value++
-        return
-      }
-
-      try {
-        const result = await provider.generate({
-          text:     sentence.text,
-          voiceId,
-          settings: role.voiceAssignment.settings ?? {},
-          apiKey,
-          groupId:  projectStore.project?.apiConfig?.providers?.[providerId]?.groupId,
-        })
-
-        // Store sentence blob in IndexedDB
-        await saveAudioSentence(sentence.id, result.blob)
-
-        // Compute duration
-        let durationMs = null
-        try {
-          durationMs = await getBlobDurationMs(result.blob)
-        } catch {
-          // Duration decode failed — estimate from text length (~150 wpm)
-          durationMs = Math.round((sentence.text.split(' ').length / 150) * 60_000)
-        }
-
-        // Update sentence record
-        updateSentence(sentence.id, {
-          status:      'ready',
-          audioKey:    sentence.id,
-          durationMs,
-          wordTimings: result.wordTimings ?? null,
-        })
-
-        doneCount.value++
-
-        // Check if all sentences in this group are ready → stitch
-        const group = groups.value.find(g => g.id === sentence.paragraphGroupId)
-        if (group) await maybeStitchGroup(group, provider)
-
-      } catch (err) {
-        setSentenceStatus(sentence.id, 'error', err.message)
-        failCount.value++
-        currentError.value = err.message
-      }
+  // 1. Identify all unique providers used in this batch
+  const usedProviderIds = new Set(
+    pendingSentences.map(s => {
+      const role = projectStore.cast.find(r => r.id === s.roleId)
+      return role?.voiceAssignment?.providerId || defaultProviderId
     })
+  )
 
-    // Run with max 2 concurrent requests
-    await withConcurrency(tasks, 2)
+  // 2. Resolve API keys for ALL needed providers before starting
+  const apiKeys = {}
+  try {
+    for (const pId of usedProviderIds) {
+      apiKeys[pId] = await resolveApiKey(pId)
+    }
+  } catch (err) {
+    currentError.value = err.message === 'API_KEY_LOCKED' 
+      ? 'One or more API keys are locked — check Settings.' 
+      : err.message
+    throw err
+  }
 
-    // Recompute master timeline
-    const updated = recomputeMasterTimeline(groups.value)
-    groups.value = updated
+  // Check if output folder prompt is needed
+  const project = projectStore.project
+  if (project && !project.outputFolderHandle && !project.outputFolderPromptDismissed && onFolderPrompt) {
+    await onFolderPrompt()
+  }
 
-    // Persist updated groups to project
-    if (projectStore.project) {
-      projectStore.project.paragraphGroups = groups.value
-      await saveProject(projectStore.project)
+  isGenerating.value  = true
+  totalCount.value    = pendingSentences.length
+  doneCount.value     = 0
+  failCount.value     = 0
+  currentError.value  = null
+
+  // 3. Build generation tasks
+  const tasks = pendingSentences.map(sentence => async () => {
+    setSentenceStatus(sentence.id, 'generating')
+
+    const role = projectStore.cast.find(r => r.id === sentence.roleId)
+    
+    // Determine which provider this specific role wants to use
+    const targetProviderId = role?.voiceAssignment?.providerId || defaultProviderId
+    const provider = getProvider(targetProviderId)
+    const apiKey   = apiKeys[targetProviderId]
+    const voiceId  = role?.voiceAssignment?.voiceId
+
+    if (!provider) {
+      setSentenceStatus(sentence.id, 'error', `Provider "${targetProviderId}" not found`)
+      failCount.value++
+      return
     }
 
-    isGenerating.value = false
+    if (!voiceId) {
+      setSentenceStatus(sentence.id, 'error', `No voice assigned to role "${role?.label}"`)
+      failCount.value++
+      return
+    }
+
+    try {
+      // Pass the role-specific settings (Pitch, Rate, Vol, Emotion) to the provider
+      const result = await provider.generate({
+        text:     sentence.text,
+        voiceId,
+        settings: role.voiceAssignment.settings ?? {},
+        apiKey,
+        // Pull GroupId if provider is MiniMax
+        groupId:  projectStore.project?.apiConfig?.providers?.[targetProviderId]?.groupId,
+      })
+
+      await saveAudioSentence(sentence.id, result.blob)
+
+      let durationMs = null
+      try {
+        durationMs = await getBlobDurationMs(result.blob)
+      } catch {
+        durationMs = Math.round((sentence.text.split(' ').length / 150) * 60_000)
+      }
+
+      updateSentence(sentence.id, {
+        status:      'ready',
+        audioKey:    sentence.id,
+        durationMs,
+        wordTimings: result.wordTimings ?? null,
+      })
+
+      doneCount.value++
+
+      const group = groups.value.find(g => g.id === sentence.paragraphGroupId)
+      if (group) await maybeStitchGroup(group, provider)
+
+    } catch (err) {
+      setSentenceStatus(sentence.id, 'error', err.message)
+      failCount.value++
+      currentError.value = err.message
+    }
+  })
+
+  await withConcurrency(tasks, 2)
+
+  const updated = recomputeMasterTimeline(groups.value)
+  groups.value = updated
+
+  if (projectStore.project) {
+    projectStore.project.paragraphGroups = groups.value
+    await saveProject(projectStore.project)
   }
+
+  isGenerating.value = false
+}
 
   // ─── Stitch a group when all its sentences are ready ─────────────────────────
   async function maybeStitchGroup(group, provider) {

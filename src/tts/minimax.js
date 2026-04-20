@@ -220,71 +220,55 @@ export const minimaxProvider = {
     return MINIMAX_VOICES
   },
 
-  async generate({ text, voiceId, settings = {}, apiKey, groupId }) {
-    if (!apiKey) throw new Error('MiniMax API key is required')
+  async generate({ text, voiceId, apiKey, groupId, settings }) {
+  const payload = {
+    model: settings?.model || 'speech-2.6-hd',
+    text,
+    stream: false,
+    voice_setting: {
+      voice_id: voiceId,
+      speed:    parseFloat(settings?.speed)  || 1.0,
+      vol:      parseFloat(settings?.volume) || 1.0,
+      pitch:    parseInt(settings?.pitch)    || 0,
+      ...(settings?.emotion ? { emotion: settings.emotion } : {}),
+    },
+    audio_setting: {
+      sample_rate: 32000,
+      bitrate:     128000,
+      format:      'mp3',
+      channel:     1,
+    },
+  }
 
-    // GroupId as query param avoids the CORS-blocked header issue
-    const url = groupId
-      ? `${BASE_URL}/t2a_v2?GroupId=${encodeURIComponent(groupId)}`
-      : `${BASE_URL}/t2a_v2`
+  const url = groupId
+    ? `https://api.minimax.io/v1/t2a_v2?GroupId=${groupId}`
+    : `https://api.minimax.io/v1/t2a_v2`
 
-    const body = {
-      model: 'speech-02-hd',
-      text,
-      stream: false,
-      voice_setting: {
-        voice_id: voiceId,
-        speed:    settings.speed   ?? 1.0,
-        vol:      settings.vol     ?? 1.0,
-        pitch:    settings.pitch   ?? 0,
-        emotion:  settings.emotion ?? 'neutral',
-      },
-      audio_setting: {
-        sample_rate: 32000,
-        bitrate:     128000,
-        format:      'mp3',
-        channel:     1,
-      },
-    }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type':  'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
 
-    const res = await withRetry(() =>
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-      })
-    )
+  const data = await response.json()
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => res.statusText)
-      const err = new Error(`MiniMax API error ${res.status}: ${errText}`)
-      err.status = res.status
-      throw err
-    }
+  if (data.base_resp?.status_code !== 0) {
+    throw new Error(data.base_resp?.status_msg || 'MiniMax generation failed')
+  }
 
-    const data = await res.json()
-    const audioData = data?.data?.audio ?? data?.audio
-    if (!audioData) {
-      const msg = data?.base_resp?.status_msg ?? 'No audio data in response'
-      throw new Error(`MiniMax: ${msg}`)
-    }
+  // MiniMax T2A v2 returns audio as a hex string (Bug Fix #2)
+  const audioBlob = hexToBlob(data.data.audio)
 
-    const blob = audioDataToBlob(audioData)
+  // Word-level timings for playback highlight sync
+  const wordTimings = data.data.extra_info?.word_info?.map(w => ({
+    word:     w.text,
+    start_ms: w.start_ms,
+    end_ms:   w.end_ms,
+  })) ?? null
 
-    const rawWords = data?.extra_info?.word_info ?? data?.word_info ?? null
-    const wordTimings = rawWords
-      ? rawWords.map(w => ({
-          word:       w.text ?? w.word,
-          startMs:    w.start_time ?? w.start,
-          endMs:      w.end_time   ?? w.end,
-          editorFrom: null,
-          editorTo:   null,
-        }))
-      : null
-
-    return { blob, wordTimings }
-  },
+  return { blob: audioBlob, wordTimings }
+},
 }

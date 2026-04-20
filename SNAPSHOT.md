@@ -1,13 +1,13 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-06
-> Current phase: Phase 4 complete — Phase 5 next
+> Last updated: 2026-04-07 (session 3)
+> Current phase: v1.2 — Dockable Panel System complete
 
 ---
 
 ## What Storyfi Is
-A browser-native PWA that imports Markdown scripts, lets users tag text selections with voice roles, generates MP3 audio via TTS APIs (MiniMax, OpenAI, Browser), stitches sentences into paragraph audio files, and writes them to a user-chosen disk folder. Built with Vue 3 + Tiptap + Pinia + IndexedDB.
+A professional, browser-native multi-voice audio production studio. Transforms Markdown scripts into polished audio using high-end TTS engines (MiniMax, ElevenLabs, OpenAI). Features a "Cinema Noir" editorial interface with real-time word-level synchronisation, per-character performance controls, and a draggable multi-pane workspace. Built with Vue 3 + Tiptap + Pinia + IndexedDB.
 
 ---
 
@@ -15,13 +15,16 @@ A browser-native PWA that imports Markdown scripts, lets users tag text selectio
 | Layer | Choice |
 |---|---|
 | Framework | Vue 3, Composition API, `<script setup>` |
+| Build | Vite 6 |
 | Editor | Tiptap v2 via `@tiptap/vue-3` |
-| State | Pinia (project.js + generation.js + playback.js stores) |
+| State | Pinia (project.js + generation.js + playback.js) |
 | Storage | IndexedDB via `idb` library |
 | File output | File System Access API (per-project folder) |
-| Build | Vite + vite-plugin-pwa |
-| MP3 encoding | Direct blob concat (Phase 3); lamejs deferred to Phase 6 |
+| PWA | vite-plugin-pwa + Workbox |
+| Audio engine | lamejs (gapless 128kbps CBR MP3) |
 | Playback | Web Audio API (`AudioContext` + `AudioBufferSourceNode`) |
+| Drag & drop | vuedraggable@next (SortableJS wrapper) |
+| Hosting | Cloudflare Pages |
 | Fonts | Playfair Display (display), DM Sans (UI), JetBrains Mono (mono) |
 
 ---
@@ -39,32 +42,31 @@ storyfi/
     ├── main.js                        — Vue app entry, Pinia init
     ├── App.vue                        — root component, hash router (#/project/:id), global CSS tokens
     ├── views/
-    │   ├── LibraryView.vue            — project list, create, import MD, delete, clear audio
-    │   └── EditorView.vue             — 3-panel shell (sidebar | editor | playlist)
+    │   ├── LibraryView.vue            — project grid + New Project card; no import/new buttons in header
+    │   └── EditorView.vue             — dockable workspace shell: toolbar, columns, status bar
     ├── panels/
-    │   ├── CastPanel.vue              — voice role CRUD, inline name edit, voice picker modal
-    │   └── PlaylistPane.vue           — group rows, sentence sub-rows, AudioPlayerBar docked at bottom
+    │   ├── CastPanel.vue              — voice role CRUD, per-role provider/voice/performance/model settings (no header — in DockablePanel)
+    │   └── PlaylistPane.vue           — group rows, sentence sub-rows, Generate/Export toolbar, AudioPlayerBar
     ├── editor/
-    │   ├── StoryEditor.vue            — Tiptap editor, BubbleMenu tagging, MD import, highlight decorations
+    │   ├── StoryEditor.vue            — Tiptap editor, BubbleMenu tagging, MD import, highlight decorations (no toolbar — in DockablePanel bar-right)
     │   ├── splitter.js                — sentence extraction, char-limit splitting, extractTaggedSpans()
     │   └── extensions/
     │       ├── VoiceTag.js            — custom Mark: highlights tagged text with role colour
     │       └── SegmentBreak.js        — custom Node: manual segment break marker (§)
     ├── store/
-    │   ├── db.js                      — IndexedDB schema (6 stores), saveProject strips Vue Proxy
-    │   ├── project.js                 — Pinia: active project, cast mutations, auto-save debounced 2s
+    │   ├── db.js                      — IndexedDB schema (v2: +voice_previews), saveProject strips Vue Proxy
+    │   ├── project.js                 — Pinia: active project, cast mutations, defaultVoiceAssignment(), reorderCast()
     │   ├── generation.js              — Pinia: build groups, sentence queue, stitch, disk write
     │   └── playback.js                — Pinia: transport state, RAF loop, highlight sync
     ├── tts/
     │   ├── provider.js                — registry, voice cache, withConcurrency(), withRetry()
-    │   ├── minimax.js                 — MiniMax T2A v2, hex decode, GroupId as query param
+    │   ├── minimax.js                 — MiniMax T2A v2, per-role model, hex decode, GroupId as query param
     │   ├── openai.js                  — OpenAI TTS, binary MP3, no word timings
     │   └── browser.js                 — SpeechSynthesis, preview only, no MP3 export
     ├── audio/
     │   ├── timestamps.js              — getBlobDurationMs() 3-tier, computeSentenceTimings(), formatDuration()
-    │   └── stitcher.js                — stitchBlobs() blob concat, WAV encoder fallback
+    │   └── stitcher.js                — lamejs gapless MP3 encode
     ├── storage/
-    │   ├── db.js                      — (see store/db.js — same file)
     │   ├── crypto.js                  — Web Crypto API: PBKDF2+AES-GCM key encryption
     │   ├── filesystem.js              — File System Access API: pickFolder, write, read, exists
     │   ├── quota.js                   — StorageManager: getQuotaInfo(), requestPersistentStorage()
@@ -72,12 +74,20 @@ storyfi/
     ├── modals/
     │   ├── SettingsModal.vue          — API key entry per provider, active provider selector
     │   ├── FolderPromptModal.vue      — first-generation output folder prompt, per-project
-    │   └── SyncWarningModal.vue       — repair options: re-write / re-import / mark for regen
+    │   ├── SyncWarningModal.vue       — repair options: re-write / re-import / mark for regen
+    │   └── ExportModal.vue            — ZIP/JSON/HTML/CSV export with live progress bar
     ├── components/
-    │   ├── StorageBar.vue             — quota bar with 80%/95% warnings
+    │   ├── StorageBar.vue             — quota bar; compact prop for status bar inline mode
     │   ├── Toast.vue                  — global toast stack
     │   ├── ConfirmModal.vue           — reusable confirm dialog
-    │   └── AudioPlayerBar.vue         — player transport: play/pause, stop, progress scrub, time display
+    │   ├── AudioPlayerBar.vue         — player transport: play/pause, stop, progress scrub, time display
+    │   └── DockablePanel.vue          — panel wrapper: title bar, ⠿ drag handle, bar-right slot, drop zones
+    ├── export/
+    │   └── exporter.js                — exportZip / exportJSON / exportHTML / exportCSV
+    ├── composables/
+    │   ├── useOnlineStatus.js         — shared reactive online/offline state (navigator.onLine + events)
+    │   ├── usePanelLayout.js          — panel layout state, mutations, localStorage persistence
+    │   └── usePanelDrag.js            — ghost element, drag state, drop zone detection (non-reactive DOM)
     └── utils/
         ├── uuid.js                    — crypto.randomUUID()
         ├── debounce.js                — debounce(fn, ms)
@@ -86,14 +96,15 @@ storyfi/
 
 ---
 
-## IndexedDB Schema (storyfi_db v1)
+## IndexedDB Schema (storyfi_db v2)
 ```
 projects        keyPath: "id"          — Project record incl. paragraphGroups[].sentences[]
 sentences       keyPath: "id"          — Sentence records, index: paragraphGroupId
 audio_sentences keyPath: "sentenceId"  — Raw sentence MP3 Blobs
 audio_stitched  keyPath: "groupId"     — Stitched paragraph MP3 Blobs
-api_keys        keyPath: "providerId"  — EncryptedKeyRecord (plaintext in Phase 3)
+api_keys        keyPath: "providerId"  — Encrypted API key records
 settings        keyPath: "key"         — appPreferences, activeProvider
+voice_previews  keyPath: "key"         — Cached preview MP3 Blobs, key: "{providerId}_{voiceId}"
 ```
 
 ---
@@ -108,12 +119,30 @@ Project {
   paragraphGroups: ParagraphGroup[],
   audioSizeBytes,
   outputFolderHandle,                  // FileSystemDirectoryHandle | null
-  outputFolderName,                    // display string
+  outputFolderName,
   outputFolderPromptDismissed,
   persistenceGranted
 }
 
-VoiceRole { id, label, color, voiceAssignment: { voiceId, voiceName, providerId, settings } }
+VoiceRole {
+  id: string,                         // uuid() — never index-based (Bug Fix #11)
+  label: string,
+  color: string,
+  voiceAssignment: VoiceAssignment    // never null (Bug Fix #12)
+}
+
+VoiceAssignment {
+  providerId: string,                 // 'minimax' | 'openai' | 'elevenlabs' | 'browser'
+  voiceId:    string | null,
+  voiceName:  string | null,
+  settings: {
+    speed:   number,                  // 0.5 – 2.0
+    pitch:   number,                  // -12 – 12 (not sent to OpenAI)
+    volume:  number,                  // 0.0 – 2.0 (default 1.0)
+    emotion: string,                  // '' | 'neutral' | 'happy' | 'sad' | 'angry'
+    model:   string,                  // MiniMax model string (see models below)
+  }
+}
 
 ParagraphGroup {
   id, roleId, roleLabel, color, order, spanKey,
@@ -128,10 +157,31 @@ Sentence {
   id, paragraphGroupId, roleId, text, sentenceIndex,
   status: "pending"|"generating"|"ready"|"error"|"stale",
   audioKey, durationMs, startMs, endMs,
-  editorFrom, editorTo,                // ProseMirror doc positions
-  wordTimings: WordTiming[] | null,    // from MiniMax word_info: { word, start_ms, end_ms }
+  editorFrom, editorTo,
+  wordTimings: WordTiming[] | null,   // { word, start_ms, end_ms } from MiniMax
   splitWarning
 }
+```
+
+---
+
+## MiniMax Models (all 8 current)
+```
+speech-2.8-hd     — Premium  (latest, best quality)
+speech-2.8-turbo  — Standard (latest turbo)
+speech-2.6-hd     — Premium  ← default for new roles
+speech-2.6-turbo  — Standard
+speech-02-hd      — Standard (legacy)
+speech-02-turbo   — Budget   (legacy)
+speech-01-hd      — Budget   (legacy)
+speech-01-turbo   — Budget   (cheapest)
+```
+
+Default for new roles: `speech-2.6-hd`
+
+Emotion payload rule — omit field entirely when empty string:
+```javascript
+...(settings?.emotion ? { emotion: settings.emotion } : {}),
 ```
 
 ---
@@ -140,392 +190,478 @@ Sentence {
 
 ### 1. saveProject() — strips Vue Proxy before IDB write
 ```javascript
-// store/db.js
 const { outputFolderHandle, ...serializable } = project
 const plain = JSON.parse(JSON.stringify(serializable))
 await db.put('projects', { ...plain, outputFolderHandle, updatedAt: Date.now() })
 ```
-Vue reactive Proxy objects cannot be structured-cloned by IndexedDB. JSON round-trip strips them.
 
 ### 2. MiniMax audio is HEX encoded, not base64
 ```javascript
-// tts/minimax.js — audioDataToBlob()
 const isHex = /^[0-9a-fA-F]+$/.test(trimmed) && trimmed.length % 2 === 0
 return isHex ? hexToBlob(trimmed) : base64ToBlob(trimmed)
 ```
-MiniMax T2A v2 returns `data.audio` as a hex string. `atob()` on hex = corrupt audio.
 
 ### 3. MiniMax GroupId — query param not header (CORS)
 ```javascript
-// tts/minimax.js
 const url = groupId
-  ? `${BASE_URL}/t2a_v2?GroupId=${encodeURIComponent(groupId)}`
-  : `${BASE_URL}/t2a_v2`
+  ? `https://api.minimax.io/v1/t2a_v2?GroupId=${groupId}`
+  : `https://api.minimax.io/v1/t2a_v2`
 ```
-MiniMax blocks `GroupId` as a request header from browsers. Query param works.
 
 ### 4. Resizable pane — pure DOM, no Vue reactive state during drag
-```javascript
-// views/EditorView.vue
-function onResize(e) {
-  // Direct DOM — zero Vue involvement during mousemove
-  wrapperEl.value.style.flexBasis = newWidth + 'px'
-}
-function stopResize() {
-  // No reactive update — DOM already correct, nothing for Vue to patch
-}
-```
-Updating a `ref()` on every mousemove triggers rapid Vue re-renders → `__vnode null` crash.
+Direct DOM style mutation during mousemove. No `ref()` update → no Vue re-render → no `__vnode null` crash.
 
 ### 5. getBlobDurationMs() — 3-tier with timeouts
-```javascript
-// audio/timestamps.js
-// Tier 1: HTML <audio> element (most reliable for MP3)
-// Tier 2: AudioContext with 5s Promise.race timeout
-// Tier 3: size-based estimate (blob.size / 16000 * 1000)
-```
-`AudioContext.decodeAudioData()` can return a never-resolving promise on MiniMax MP3s.
+Tier 1: HTML `<audio>`. Tier 2: `AudioContext` with 5s `Promise.race`. Tier 3: size estimate.
 
 ### 6. generation.js — all imports static, none dynamic
-All `import` statements are at the top level. No `await import()` inside async loops.
-Dynamic imports inside concurrent async tasks cause silent module resolution hangs.
+No `await import()` inside async loops. Dynamic imports in concurrent tasks cause silent hangs.
 
 ### 7. Playlist pane layout — flexbox not CSS grid
-```css
-/* views/EditorView.vue */
-.editor-shell { display: flex; flex-direction: row; }
-.playlist-wrapper { flex-shrink: 0; flex-grow: 0; flex-basis: 300px; }
-```
-CSS grid with dynamic `gridTemplateColumns` via `:style` is unreliable with Vue scoped styles.
+`display: flex; flex-direction: row` on shell. CSS grid with reactive `gridTemplateColumns` is unreliable with Vue scoped styles.
 
 ### 8. Web Audio objects — never in Pinia reactive state
-`AudioContext`, `AudioBufferSourceNode`, and `AudioBuffer[]` live in module-level `let` variables
-in `playback.js`, never in Pinia `state()`. Vue Proxy-wrapping these causes silent failures:
-suspended state becomes unreachable, `onended` callbacks are lost.
-Same principle as Bug Fix #4. The pattern:
-```javascript
-// store/playback.js — at module scope, outside defineStore()
-let _audioCtx = null
-let _source = null
-let _buffers = []
-// Pinia state() only holds serialisable reactive values: isPlaying, currentMs, etc.
-```
+`AudioContext`, `AudioBufferSourceNode`, `AudioBuffer[]` in module-level `let` vars in `playback.js`. Vue Proxy-wrapping breaks `suspended` state and `onended` callbacks.
 
 ### 9. Playback highlight decorations — transient, never saved
-`playbackHighlightPlugin` state is driven entirely by `editor.view.dispatch(tr.setMeta(...))`.
-It is never written to the Tiptap JSON document and therefore never triggers the 2s auto-save
-debounce. Cleared explicitly on pause/stop/playback end.
-```javascript
-// store/playback.js
-editor.view.dispatch(
-  editor.state.tr.setMeta(playbackHighlightKey, { from, to, type: 'word' })
-)
-```
+Driven by `editor.view.dispatch(tr.setMeta(...))`. Never written to Tiptap JSON doc. Never triggers auto-save debounce.
 
-### 10. decodeAudioData — 10s timeout in playback store
-Same pattern as Bug Fix #5. Wrapped in `Promise.race` with a 10s timeout.
-MiniMax MP3s can cause never-resolving `decodeAudioData` promises.
+### 10. decodeAudioData — 10s timeout
 ```javascript
 const audioBuf = await Promise.race([
   _audioCtx.decodeAudioData(arrayBuf),
-  new Promise((_, rej) => setTimeout(() => rej(new Error('decodeAudioData timeout')), 10_000)),
+  new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10_000)),
 ])
 ```
 
----
-
-## Generation Pipeline (Phase 3)
+### 11. Role IDs use uuid(), never array index
+```javascript
+// store/project.js — addRole()
+const id = uuid()  // was: `actor_${idx}` — caused double-delete after add+delete cycle
 ```
-User clicks Generate
-  → check API key in IndexedDB (prompt Settings if missing)
-  → check output folder (FolderPromptModal if first time)
-  → extractTaggedSpans(doc) → buildGroupsFromDoc()
-  → pendingSentences = all sentences with status "pending"|"error"
-  → withConcurrency(tasks, 2):
-      for each sentence:
-        provider.generate() → hex/base64 → Blob
-        saveAudioSentence(id, blob) → IndexedDB
-        getBlobDurationMs(blob) → 3-tier
-        updateSentence(id, { status: "ready", durationMs, wordTimings })
-        maybeStitchGroup() → if all sentences ready:
-          stitchBlobs([...blobs]) → single Blob (direct concat)
-          saveAudioStitched(groupId, blob) → IndexedDB
-          writeFileToFolder(handle, diskFilename, blob) → disk
-          updateGroup(id, { stitchStatus: "ready", totalDurationMs })
-  → recomputeMasterTimeline(groups)
-  → saveProject() (strips Vue Proxy via JSON)
-```
+`actor_${cast.length}` reuses IDs after deletion. Example: delete Actor 1 (len→2), add new role → gets id `actor_2`, colliding with existing Actor 2. `deleteRole` filters by id, removing both. uuid() is collision-proof.
 
----
-
-## Playback Pipeline (Phase 4)
-```
-User clicks ▶ Play All (or per-group ▶ button)
-  → playback.loadAndPlay(gen.groups, startGroupIdx)
-      → create AudioContext (must be in user gesture handler)
-      → for each group: getAudioStitched(id) → arrayBuffer()
-        → Promise.race(decodeAudioData, 10s timeout) → AudioBuffer
-        → build groupOffsets[]: { groupId, groupIdx, startMs, endMs, hasAudio }
-      → _startGroup(startGroupIdx)
-          → AudioBufferSourceNode.start(0, offsetSec)
-          → src.onended → _startGroup(next)
-          → _startRaf()
-
-RAF tick (60fps):
-  → currentMs = _segmentOffsetMs + (audioCtx.currentTime - _startedAtCtx) * 1000
-  → findCurrentSentence(group, groupLocalMs)
-  → if sentence.wordTimings: computeWordEditorPositions() [cached per sentence]
-      → sequential indexOf within sentence.editorFrom/editorTo range
-      → find word whose start_ms ≤ sentenceLocalMs < end_ms
-      → editorRef.highlightWord(from, to)
-  → else: editorRef.highlightSentence(from, to)
-
-Seek:
-  → playback.seekToMs(ms) / seekToGroup(idx)
-  → _startGroupAtOffset(groupIdx, offsetMs)
-  → src.start(0, offsetSec)
-
-Stop/unmount:
-  → _stopSourceNode() (src.onended = null, src.stop())
-  → _stopRaf()
-  → editorRef.clearHighlight()
-```
-
----
-
-## Playback Store (playback.js)
-
-### Reactive state (Pinia)
-```
-isPlaying, isPaused, isLoading, loadError
-currentGroupIdx       — index into groupOffsets[] and _groups[]
-currentSentenceId     — for playlist row highlighting
-currentMs             — master timeline position in ms (updated every RAF tick)
-totalMs               — total decoded duration
-groupOffsets[]        — [{ groupId, groupIdx, startMs, endMs, hasAudio }]
-```
-
-### Non-reactive module-level vars (Web Audio — Bug Fix #8)
-```
-_audioCtx             AudioContext
-_buffers[]            AudioBuffer[] indexed parallel to _groups
-_source               Current AudioBufferSourceNode
-_startedAtCtx         audioCtx.currentTime at last source.start()
-_segmentOffsetMs      master ms offset of current group's start
-_rafId                requestAnimationFrame handle
-_groups               paragraphGroups[] snapshot at loadAndPlay() time
-_wordPositionCache    Map<sentenceId, WordPosition[] | false>
-_editorRef            StoryEditor component ref (set by EditorView on mount)
-```
-
-### Key actions
-```
-loadAndPlay(groups, startGroupIdx)   — decode all IDB blobs, start playback
-pause() / resume() / stop()
-seekToGroup(idx) / seekToMs(ms)
-setEditorRef(ref)                    — called by EditorView.vue in onMounted
-togglePlayPause()
-```
-
-### Getters
-```
-progress              0–1 fraction through totalMs
-hasAudio              totalMs > 0
-currentTimeDisplay    formatDuration(currentMs)
-totalTimeDisplay      formatDuration(totalMs)
-```
-
----
-
-## StoryEditor Highlight API (Phase 4)
-
-Exposed via `defineExpose` — called by `playback.js` RAF loop:
+### 12. voiceAssignment is never null
+`addRole()` and `createBlankProject()` always call `defaultVoiceAssignment()`. CastPanel has `watch(roles, normalizeRoles, { immediate: true })` that patches roles loaded from older saves (backfills null voiceAssignment and any missing settings keys including `model`).
 
 ```javascript
-highlightWord(from, to)      // gold underline decoration — MiniMax word timings
-highlightSentence(from, to)  // purple wash decoration — OpenAI / fallback
-clearHighlight()             // removes all playback decorations
-getEditor()                  // returns raw Tiptap Editor instance (for word pos computation)
-```
-
-CSS classes (in global unscoped `<style>` in StoryEditor.vue):
-```css
-.playback-highlight--sentence { background: rgba(124, 92, 191, 0.22) }
-.playback-highlight--word     { background: rgba(251,191,36,0.22); border-bottom: 2px solid rgba(251,191,36,0.80) }
-```
-
----
-
-## AudioPlayerBar (components/AudioPlayerBar.vue)
-
-Props: `groups: ParagraphGroup[]`
-Uses `usePlaybackStore()` directly.
-
-Controls:
-- Stop button (■) — disabled when stopped
-- Play/Pause button (▶/⏸) — primary accent circle; shows spinner during load
-- Progress track — click or drag to scrub via `playback.seekToMs(ms)`
-- Time display: `currentTimeDisplay / totalTimeDisplay`
-- Error banner: shown when `playback.loadError` is set
-
-Visibility in PlaylistPane: `v-if="hasReadyAudio || playback.isPlaying || playback.isPaused"`
-
----
-
-## Sync-on-Open (Q10)
-On every project open:
-- Compare `audio_stitched` IDB blobs vs disk files in output folder
-- Divergence types: `missing_from_disk` | `missing_from_idb` | `missing_both`
-- Modal offers: Re-write to disk / Re-import from disk / Mark for regeneration / Ignore
-- Ignored divergences show ⚠ icon on playlist row (yellow, `diskDivergences` map in gen store)
-
----
-
-## TTS Providers
-| Provider | Highlight mode | Word timings | Notes |
-|---|---|---|---|
-| MiniMax | Word-level | ✅ `word_info` array: `{ word, start_ms, end_ms }` | Primary. Hex audio. GroupId as query param. |
-| OpenAI | Sentence-level | ❌ | Binary MP3. Direct CORS. |
-| Browser | Word-level | Via `charIndex` | Preview only. No MP3 export. |
-
----
-
-## Voice List
-MiniMax: 130+ static voices (full catalogue from platform.minimax.io/docs/faq/system-voice-id).
-Fetched live from API is blocked by CORS on `groupid` header — static list used instead.
-Voices loaded on Cast Panel open, cached in session memory.
-
----
-
-## Routing
-Hash-based: `/#/` → LibraryView, `/#/project/:id` → EditorView.
-No vue-router. `window.addEventListener('hashchange')` in App.vue.
-
----
-
-## Phase Completion Status
-| Phase | Feature                                      | Status      |
-|-------|----------------------------------------------|-------------|
-| 1     | PWA shell, Library screen, IndexedDB schema  | ✅ Complete |
-| 1     | StorageBar, quota management                 | ✅ Complete |
-| 2     | Tiptap editor, MD import, VoiceTag mark      | ✅ Complete |
-| 2     | SegmentBreak node, BubbleMenu, CastPanel     | ✅ Complete |
-| 3     | MiniMax/OpenAI/Browser TTS providers         | ✅ Complete |
-| 3     | Sentence splitting, stitching, disk output   | ✅ Complete |
-| 3     | Playlist: group rows + sentence expansion    | ✅ Complete |
-| 3     | Sync-on-open divergence detection            | ✅ Complete |
-| 3     | Resizable playlist pane                      | ✅ Complete |
-| 4     | Audio player (play/pause/stop, scrub)        | ✅ Complete |
-| 4     | Playback sync: word/sentence highlighting    | ✅ Complete |
-| 5     | Export: ZIP, JSON, HTML, CSV                 | ✅ Complete |
-| 6     | PWA install prompt, final polish, lamejs     | ⬜ Pending  |
-
----
-
-## Phase 5 — Export (Completed)
-
-**Status: ✅ Fully Implemented and Tested**
-
-### Delivered Features
-- Full Export ZIP containing:
-  - One MP3 per ready paragraph group with clean filenames (`02_narrator_a4f2b91c.mp3`)
-  - `playlist.json` manifest (title, timeline, sentences, wordTimings preserved)
-  - `script.html` annotated script with embedded audio players (relative paths)
-  - `timings.csv` with per-sentence start/end/duration
-- Standalone exports for `playlist.json`, `script.html`, and `timings.csv`
-- Progress feedback during ZIP generation
-- Safe filename sanitization
-- Only exports groups with `stitchStatus === 'ready'`
-- Clean error handling and empty-state in ExportModal
-- JSZip integration for reliable cross-browser ZIP creation
-
-### Files Finalized This Phase
-- `src/export/exporter.js` — core export engine
-- `src/modals/ExportModal.vue` — UI + wiring
-- Integration fixes in `EditorView.vue` and `PlaylistPane.vue`
-
-### Testing Notes
-- ZIP downloads correctly with all files
-- `script.html` opens with functional audio players
-- No console errors
-- Progress bar works (fast on small projects — expected)
-
----
-
-### New Critical Bug Fixes Added
-
-### 11. ExportModal — `fmt` helper must be defined in `<script setup>`
-```js
-// ExportModal.vue
-import { formatDuration } from '@/audio/timestamps.js'
-const fmt = (ms) => formatDuration(ms)
-
-
-### Export formats
-All four formats read from `gen.groups` + `store.project` — no new IDB schema needed.
-
-**ZIP** (`jszip` or native CompressionStream)
-- One MP3 per group, named `{order:02}_{roleLabel}_{groupId}.mp3`
-- `playlist.json` manifest (see JSON below)
-- `script.html` annotated doc (see HTML below)
-- Trigger: browser `<a download>` with Object URL
-
-**JSON manifest** (`playlist.json`)
-```json
-{
-  "title": "project title",
-  "exportedAt": "ISO timestamp",
-  "totalDurationMs": 12345,
-  "groups": [
-    {
-      "order": 1, "roleLabel": "Narrator", "color": "#...",
-      "file": "01_narrator_xxxx.mp3",
-      "totalDurationMs": 3400,
-      "startMs": 0, "endMs": 3400,
-      "sentences": [
-        { "index": 0, "text": "...", "startMs": 0, "endMs": 1200,
-          "wordTimings": [...] }
-      ]
-    }
-  ]
+// store/project.js
+function defaultVoiceAssignment() {
+  return {
+    providerId: 'minimax', voiceId: null, voiceName: null,
+    settings: { speed: 1.0, pitch: 0, volume: 1.0, emotion: '', model: 'speech-2.6-hd' },
+  }
 }
 ```
 
-**HTML** (`script.html`)
-- Full project title + export date in `<head>`
-- Each paragraph group: role badge + full sentence text, colour-coded
-- Audio player `<audio src="./01_narrator_xxxx.mp3">` per group
-- Self-contained (no external deps)
-
-**CSV** (`timings.csv`)
-- Columns: `group_order, role, sentence_index, text, start_ms, end_ms, duration_ms`
-- One row per sentence
-
-### Implementation notes
-- JSZip is the easiest cross-browser approach; `StreamSaver.js` for large exports
-- Check if JSZip is already in `package.json` before adding
-- Export button in PlaylistPane toolbar is already wired: `@export="onExport"` → `EditorView.onExport()`
-- Replace the `toastRef.value?.show('Export coming in Phase 5', 'info')` stub in EditorView
+### 13. unsetVoiceTag — must extendMarkRange first
+Without a text selection (cursor-only mode), `unsetVoiceTag()` alone only operates at the cursor point and leaves the mark visible. Always extend to the full mark range first:
+```javascript
+editor.chain().focus().extendMarkRange('voiceTag').unsetVoiceTag().run()
+```
+`extendMarkRange('voiceTag')` walks outward from the cursor to the mark boundaries before unsetting. Works correctly for both cursor-only and text-selection modes.
 
 ---
 
-## Open Questions
-| Q | Question | Decision |
+## CastPanel — Drag to Reorder
+Cast roles are reorderable via drag-and-drop using `vuedraggable@next`.
+
+- `⠿` drag handle on each card — invisible at rest, fades in on card hover
+- `ghost-class="role-card--ghost"` — faint dashed purple tint at drop target
+- `animation: 180` — smooth SortableJS slide animation
+- `reorderableCast` writable computed: getter returns `store.cast`, setter calls `store.reorderCast(newOrder)`
+- `store.reorderCast(newOrder)` replaces `project.value.cast` and calls `markDirty()`
+- Cast order is cosmetic only — generation order is driven by document position, not cast order
+
+---
+
+## CastPanel — Performance Settings (⚙️ gear icon)
+
+| Field | Shown when | Notes |
 |---|---|---|
-| Q6 | Audio stitching | ✅ Client-side blob concat |
-| Q9 | Folder prompt timing | ✅ First generate + per-project settings |
-| Q10 | IDB/disk divergence | ✅ Re-sync on open with modal |
-| — | lamejs for re-encoding | Deferred to Phase 6 |
-| — | Cloudflare Worker proxy for MiniMax | Deferred to Phase 6 |
-| — | ZIP library choice (JSZip vs native) | Decide Phase 5 |
+| Speed | Always | Range 0.5–2.0 |
+| Volume | Always | Range 0.0–2.0, default 1.0 |
+| Pitch | Not OpenAI | Range -12–12 |
+| Model | MiniMax only | All 8 models, grouped by generation with cost badge |
+| Emotion | MiniMax only | Includes "— None —" (`value=""`) to omit from API payload |
+
+Model cost badge colours: purple = Premium, muted = Standard, green = Budget.
+`MODEL_TIERS` map in CastPanel drives badge label + colour class.
+`normalizeRoles` watcher backfills `model` (and all keys) for old saves.
 
 ---
 
-## How to Start a New Session
+## BubbleMenu — Two Modes (StoryEditor.vue)
+
+`shouldShowBubble` triggers on text selection **or** cursor inside a voiceTag mark.
+
+**Selection mode** (`hasSelection = true`):
+- "Tag as:" label + all role chips
+- "✕ Remove" if selection is already tagged
+- "§" segment break button
+
+**Cursor-in-tag mode** (`hasSelection = false`, cursor inside mark):
+- "Tagged span:" label
+- "✕ Remove" only — role chips and § hidden
+
+`hasSelection` computed reads `editor.state.selection.{from, to}` directly.
+Remove always uses `extendMarkRange('voiceTag')` before `unsetVoiceTag()` (Bug Fix #13).
+
+---
+
+## LibraryView — Current UX
+- Header contains brand + Install App pill only — no action buttons
+- Project grid uses `repeat(auto-fill, minmax(300px, 1fr))`
+- "New Project" card is always the last grid cell — dashed border, "+" icon, accent on hover
+- Empty state: grid renders with just the New card (no separate branch)
+- MD import lives in the Editor toolbar only (StoryEditor.vue) — removed from Library entirely
+
+---
+
+## Voice Preview System (CastPanel)
+
+Preview buttons appear in two places:
+- **Role card** — small ▶ next to the assigned voice chip. Only shown when a voice is assigned.
+- **Voice picker modal** — ▶ on each voice row, fades in on hover.
+
+Three button states: ▶ idle, spinner (generating), ■ playing. Clicking ■ stops. While one voice loads, all other buttons are disabled.
+
+**Cache:** `voice_previews` IDB store (schema v2). Key: `{providerId}_{voiceId}`.
+Preview text: `"Hello. How does this sound to you?"` — always uses default settings so the cache key stays stable.
+Cost: ~24KB per voice. 130 MiniMax voices ≈ 3MB if all previewed.
+
+**Cached indicator:** Cached = accent purple at 65% opacity (always visible). Uncached = muted gray (fades in on hover). Tooltip: "Play preview (cached)" vs "Generate preview".
+
+`cachedPreviewIds` — `Set<voiceId>` loaded on picker open via `getAllVoicePreviewKeys()`, filtered by provider prefix. Updated live on new generation.
+
+`_previewAudio` — module-level `Audio` element, not reactive. Cleaned up on picker close.
+
+New db.js exports: `getVoicePreview`, `saveVoicePreview`, `deleteVoicePreview`, `getAllVoicePreviewKeys`.
+
+---
+
+## Voice Picker — Language & Gender Filters
+
+Two filter rows sit between the search input and the voice list.
+
+**Language pills** — derived from `availableLanguages` computed (English first, rest alpha). Only shown when more than one language is present. Clicking active pill returns to All.
+
+**Gender pills** — always shown: Both / ♂ Male / ♀ Female.
+
+All three filters (language + gender + search text) combine with AND logic.
+Both filters reset when the picker opens.
+
+**Language badges on each row:**
+- `EN` badge — very faint (opacity 0.45)
+- Non-English badge — `--color-highlight` purple (opacity 0.75), visually distinct
+- Gender badge — faint, same style as EN
+
+18 language codes: `en fr es de it ru ja ko zh yue pt ar hi id nl pl tr uk`
+`LANG_LABELS` map provides short code (badge/pill) + full name (tooltip).
+
+---
+
+## Online / Offline Status
+
+`src/composables/useOnlineStatus.js` — module-level shared `ref(navigator.onLine)`. Window events registered once on first consumer mount, removed on last unmount.
+
+**Status bar** (bottom of workspace — v1.2 moved from sidebar):
+```
+[████░ 3.1MB / 10GB  Manage]   ·   ● Saved   ● Online
+```
+Saved dot and online dot sit in the status bar flex row alongside the compact StorageBar.
+
+**On connection change:**
+- Drop → warning toast 5s: "You're offline — audio generation unavailable"
+- Return → success toast 2.5s: "Back online"
+
+**Disabled when offline:** ▶ Generate button, 🔄 per-group regenerate buttons.
+**Always works offline:** editor, tagging, cached audio playback, export, settings.
+Voice preview generation fails gracefully offline; cached previews still play.
+
+---
+
+## Dockable Panel System (v1.2)
+
+### Architecture
+Three draggable panels — **Cast**, **Playlist**, **Editor** — arranged in dynamic columns.
+Fixed **Toolbar** at top, fixed **Status Bar** at bottom. Both immovable.
+
+### New files
+| File | Role |
+|---|---|
+| `src/composables/usePanelLayout.js` | Layout state (columns + widths), localStorage persistence, mutations |
+| `src/composables/usePanelDrag.js` | Ghost element (raw DOM), drag events, drop zone detection |
+| `src/components/DockablePanel.vue` | Panel wrapper: title bar, ⠿ handle, `#bar-right` slot, horizontal drop zones |
+
+### Layout model (`usePanelLayout`)
+```javascript
+// localStorage key: 'storyfi_panel_layout_v1'
+{
+  columns: [
+    { id: string, panels: ('cast'|'playlist'|'editor')[] },
+    ...
+  ],
+  columnWidths: { [colId]: number }  // undefined = flex:1
+}
+```
+Default: `[{ id:'col-left', panels:['cast','playlist'] }, { id:'col-right', panels:['editor'] }]`
+
+Mutations: `movePanel(panelId, targetColId, index)`, `insertInNewColumn(panelId, refColId, side)`, `setColumnWidth(colId, px)`, `resetLayout()`
+Empty columns auto-removed after every mutation. Layout validated on load (all 3 panels must be present).
+
+### Drag system (`usePanelDrag`) — Bug Fix #4 pattern
+All mouse state is non-reactive module-level vars. Only `draggingPanelId` and `activeDropZone` are reactive refs (consumed by templates for highlight classes).
+
+Ghost element: raw `document.createElement` div, CSS-variable styled, `position:fixed`, `pointerEvents:none`, follows cursor via `style.left/top` on every `mousemove`.
+
+Drop zone detection: `querySelectorAll('[data-drop-zone]')` on every `mousemove`, checks `getBoundingClientRect()` against cursor position. No `mouseenter`/`mouseleave` — position-based is more reliable.
+
+Drop zone types:
+- `{ type: 'in-col', colId, index }` — insert in column at index (horizontal lines between panels)
+- `{ type: 'new-col', refColId, side: 'left'|'right' }` — create new column (vertical lines at column edges)
+
+### DockablePanel
+- `⠿` drag handle in title bar — opacity 0 at rest, 0.75 on card hover
+- `#bar-right` slot for per-panel toolbar items
+- Horizontal drop zones (6px, `dz--h`) appear above/below panel during drag
+- Panel dims to `opacity: 0.35` while being dragged
+- `startDrag(panelId, event, onDrop)` called on handle `mousedown`
+
+### EditorView workspace shell
+**Global toolbar** (fixed top, 40px):
+```
+← Library  |  [Project Title]                    ⊞ Reset Layout  |  ⚙ Settings
+```
+
+**Editor panel bar-right slot:**
+```
+⠿ Editor    ↑ Import  |  B  I  |  §  [N chars]
+```
+
+**Playlist panel toolbar** (inside panel, not in DockablePanel bar):
+```
+▶ Generate   ↓ Export
+```
+
+**Status bar** (fixed bottom, 30px):
+```
+[████░ 3.1MB / 10GB  Manage]   ●  ● Saved   ● Online
+```
+StorageBar uses `compact` prop for inline horizontal layout.
+
+**Column resize — `_activeResize` reactive ref approach:**
+
+All resize state is non-reactive module-level vars. `_activeResize = ref(null)` is the single reactive driver — `colStyle` reads it to return live drag widths. No direct DOM style manipulation.
+
+```javascript
+// Non-reactive vars (Bug Fix #4 pattern)
+let _colResizing   = false
+let _colResizeId   = null
+let _colLeftEdge   = 0      // active column's getBoundingClientRect().left
+let _colLastW      = 0      // updated every onMove, used on mouseup (not offsetWidth)
+let _leftSnapshots = {}     // { colId: renderedWidth } for all columns LEFT of handle
+
+const _activeResize = ref(null) // { colId, width } — drives colStyle during drag
+```
+
+**`colStyle(colId)` logic:**
+1. If `_activeResize.value.colId === colId` → fixed at drag width
+2. If `_activeResize` is set AND this column is LEFT of active → use `_leftSnapshots[colId]` (snapshot from drag-start), fallback to `columnWidths`, then flex
+3. If `_activeResize` is set AND this column is RIGHT of active → `flexGrow:1` (absorbs change)
+4. No active resize → use `columnWidths` if saved, else `flexGrow:1`
+
+**Width formula:** `width = clientX - column.getBoundingClientRect().left` — avoids all `offsetWidth` timing issues. Column left edge captured once at `mousedown`, never changes during drag.
+
+**Max width:** `container.offsetWidth - 180 - 5` (container minus min other-col width minus handle). Hardcoded `700` was too small for wide screens and caused the "jump to left" bug.
+
+**`onUp` persistence:**
+```javascript
+// Spread snapshots first (pins left-side columns even if they had no saved width)
+const newWidths = { ...layout.value.columnWidths, ..._leftSnapshots }
+// Clear widths for columns to the RIGHT (they remain flexible)
+layout.value.columns.forEach((col, idx) => {
+  if (idx > resizedIdx) delete newWidths[col.id]
+})
+newWidths[_colResizeId] = _colLastW
+layout.value = { ...layout.value, columnWidths: newWidths }
+```
+
+**editorRef binding:** uses named function `setEditorRef(el)` instead of inline arrow in `v-for` (Bug Fix #14).
+
+### Bug Fix #14 — named ref callback in v-for (not inline arrow)
+```javascript
+// WRONG — inline arrow in v-for gets stale closure on teardown:
+// :ref="el => { editorRef.value = el || null }"
+
+// CORRECT — named function, stable reference:
+function setEditorRef(el) {
+  if (editorRef) editorRef.value = el ?? null
+}
+// In template: :ref="setEditorRef"
+```
+Vue calls ref callbacks with `null` on component unmount. Inline arrows inside `v-for` have a closure-capture timing bug where the reactive scope is partially destroyed before the cleanup call fires. Named functions avoid this.
+
+### Bug Fix #15 — Column resize: width = mouseX − leftEdge, not offsetWidth
+`offsetWidth` on a `flex-basis: 0px` column can return 0 or incorrect values before layout settles. Computing `width = clientX - col.getBoundingClientRect().left` is always correct — the column's left edge never moves during a drag.
+
+### Bug Fix #16 — Column resize: hardcoded 700px max caused jump-to-left
+`Math.min(700, ...)` clamped columns wider than 700px (editor with `flexGrow:1` was ~750px) to 700px on first `mousemove`. Max is now `container.offsetWidth - 180 - 5`.
+
+### Bug Fix #17 — Column resize: _activeResize ref, not direct DOM manipulation
+Setting `el.style.flexBasis` directly during drag was overwritten by Vue re-renders triggered by `activeDropZone` changes. `_activeResize = ref(null)` drives `colStyle` so Vue applies the drag width as the authoritative value.
+
+### Bug Fix #18 — Column resize: left-side column snapshots
+When dragging a right handle in a 3-column layout where left-side columns have no saved `columnWidths` entry (e.g., newly created via drag), those columns were `flexGrow:1` during the drag and expanded alongside the right column. Fix: capture `getBoundingClientRect().width` for all left-side columns at `mousedown` into `_leftSnapshots`, use them in `colStyle` to pin those columns, persist them to `columnWidths` on `mouseup`.
+
+### Bug Fix #19 — AudioPlayerBar play button disabled after generation
+`playback.hasAudio` is only true after `loadAndPlay()` decodes buffers. Button was disabled even when generated audio existed in IDB. Fixed with `hasReadyAudio = playback.hasAudio || props.groups.some(g => g.stitchStatus === 'ready')`.
+
+### Bug Fix #20 — waveformData getter always returned null
+Pinia getters only recompute when their `state` dependencies change. `() => _waveformData` had no state dependency so was never recomputed. Fix: `(state) => state.waveformVersion > 0 ? _waveformData : null` — getter now depends on `waveformVersion` and recomputes when it increments.
+
+### Bug Fix #21 — New tag above existing groups missing from playlist
+`gen.buildGroupsFromDoc()` was only called at Generate time. Tags added above existing generated groups never updated `gen.groups` order. Fix: `watch(taggedSpans, ...)` in EditorView calls `gen.buildGroupsFromDoc(doc, charLimit)` on every tagging change, guarded by `gen.groups.length > 0`. `buildGroupsFromDoc` preserves `stitchStatus === 'ready'` groups and only reorders/adds pending ones.
+
+---
+```
+--color-bg         #0e0c18      --font-display  'Playfair Display'
+--color-surface    #1a1625      --font-ui       'DM Sans'
+--color-border     #2e2a42      --font-mono     'JetBrains Mono'
+--color-accent     #7c5cbf
+--color-highlight  #c084fc
+--color-text       #f0eeff
+--color-text-muted #8b85a8
+--color-success    #4ade80
+--color-warning    #facc15
+--color-error      #f87171
+```
+
+---
+
+## Waveform Visualisation (AudioPlayerBar)
+
+Waveform canvas replaces the thin `player-track` progress div entirely. 52px tall, full panel width, scrubable.
+
+**`playback.js` additions:**
+- `_waveformData` — module-level `Float32Array | null` (non-reactive — never Proxy-wrap typed arrays)
+- `WAVEFORM_BARS = 200` — downsample target
+- `buildWaveformData(buffers, bars)` — pure function: merges channels (averaged), RMS-downsamples to `bars` values, normalises 0→1. Called after all buffers decoded in `loadAndPlay`.
+- `waveformVersion: 0` — reactive state, incremented on each rebuild, drives getter reactivity
+- `waveformData` getter — `(state) => state.waveformVersion > 0 ? _waveformData : null`
+  - **Must depend on `state.waveformVersion`** — a plain `() => _waveformData` getter has no reactive dependency and always returns null (Bug Fix #20).
+- `_waveformData = null` reset in `_cleanup()`
+
+**`AudioPlayerBar.vue`:**
+- `<canvas ref="canvasEl">` — DPR-aware, redraws via `watch(() => [playback.progress, playback.waveformVersion], drawWaveform)`
+- `ResizeObserver` on parent redraws on panel resize
+- Colours: purple played (`#7c5cbf`), muted unplayed (`rgba(255,255,255,0.12)`), light-purple playhead (`#a78bfa`)
+- Placeholder: 40 sine-wave-height bars at 50% opacity before waveform decoded (`v-if="!playback.waveformData"`)
+- Scrub: `mousedown`/`touchstart` on canvas → `seekToMs()` or repositions `currentMs` if stopped
+- Controls row: `[time] [Stop] [Play] [time]` — single row, no separate progress row
+
+---
+
+## Phase / Feature Status
+| Area | Feature | Status |
+|---|---|---|
+| Core | PWA shell, Library, IndexedDB | ✅ |
+| Core | Tiptap editor, VoiceTag, SegmentBreak | ✅ |
+| Core | MiniMax/OpenAI/ElevenLabs/Browser TTS | ✅ |
+| Core | Sentence splitting, lamejs stitching, disk output | ✅ |
+| Core | Playlist + sync-on-open divergence repair | ✅ |
+| Core | Resizable dual-pane workspace | ✅ |
+| Phase 4 | Web Audio playback, seek, scrub | ✅ |
+| Phase 4 | Word highlight (MiniMax/ElevenLabs) | ✅ |
+| Phase 4 | Sentence highlight fallback (OpenAI) | ✅ |
+| Phase 5 | ZIP / JSON / HTML / CSV export | ✅ |
+| Phase 6 | Cloudflare Pages deployment | ✅ |
+| Polish | CastPanel — all CSS tokens, no hardcoded hex | ✅ |
+| Polish | Per-role MiniMax model selector (all 8 models) | ✅ |
+| Polish | Emotion "None" option to unset | ✅ |
+| Polish | Volume slider (0–2.0) in advanced settings | ✅ |
+| Polish | Library New Project card, header cleanup | ✅ |
+| Polish | Cast drag-to-reorder (vuedraggable@next) | ✅ |
+| Polish | BubbleMenu cursor-in-tag mode (Remove only) | ✅ |
+| Polish | Voice preview with IDB cache (db v2) | ✅ |
+| Polish | Cached preview visual indicator (purple = cached) | ✅ |
+| Polish | Voice picker language + gender filter pills | ✅ |
+| Polish | Language & gender badges on voice rows | ✅ |
+| Polish | Online/offline status dot + toast + disabled states | ✅ |
+| v1.2 | Dockable panel system (drag, ghost, drop zones, columns) | ✅ |
+| v1.2 | Panel layout localStorage persistence | ✅ |
+| v1.2 | Column resize handles — full directional snapshot system | ✅ |
+| v1.2 | Global toolbar (nav + title + app controls) | ✅ |
+| v1.2 | Editor toolbar in DockablePanel bar-right slot | ✅ |
+| v1.2 | Status bar (StorageBar compact + Saved + Online) | ✅ |
+| Bug #11 | Role ID collision (uuid vs index) | ✅ |
+| Bug #12 | voiceAssignment null crash on add/delete | ✅ |
+| Bug #13 | unsetVoiceTag needs extendMarkRange first | ✅ |
+| Bug #14 | Named ref callback in v-for (not inline arrow) | ✅ |
+| Bug #15 | Column resize width = mouseX − leftEdge (not offsetWidth) | ✅ |
+| Bug #16 | Column resize 700px max too small (now dynamic) | ✅ |
+| Bug #17 | Column resize via _activeResize ref (not direct DOM) | ✅ |
+| Bug #18 | Left-column snapshots for unsaved-width columns | ✅ |
+| Bug #19 | AudioPlayerBar disabled after generation (hasReadyAudio) | ✅ |
+| Bug #20 | waveformData getter not reactive (must depend on waveformVersion) | ✅ |
+| Bug #21 | New tag above existing groups missing from playlist until Generate | ✅ |
+| v1.2 | Waveform visualisation in AudioPlayerBar | ✅ |
+| Backlog | Scene/Act/Chapter hierarchy | ⬜ |
+| Backlog | Auto-scroll teleprompter during playback | ⬜ |
+| Backlog | SRT/VTT subtitle export | ⬜ |
+| Backlog | Mobile UI — swipe between panels (landscape + portrait) | ⬜ |
+| Backlog | Cloudflare Worker — OAuth proxy + MiniMax API proxy | ⬜ |
+| Backlog | Google Drive integration (requires Worker for token exchange) | ⬜ |
+
+---
+
+## Backlog Notes
+
+### Mobile UI
+Swipe left/right to cycle panels (Editor → Cast → Playlist). Dot indicators + tappable.
+Detected via `window.matchMedia('(max-width: 768px)')`. Desktop layout completely unaffected.
+`showDirectoryPicker()` not supported on iOS (any browser) — falls back to ZIP export automatically via existing `hasFileSystemAccess()` guard. Build mobile before Google Drive — Drive is more valuable on mobile.
+
+### Cloudflare Worker + Google Drive
+One Worker solves two long-standing backlog items:
+- `/api/minimax` — proxies TTS requests, hides API key from browser bundle
+- `/api/oauth/google` — handles OAuth 2.0 token exchange, holds client secret server-side
+- `/api/drive/upload` — accepts blob, writes to user's Google Drive
+
+Pure client-side OAuth is insecure (client secret would be in JS bundle). Worker is required.
+Google Drive is the natural "save files" answer on iOS where File System Access API is unavailable.
+Build order: Mobile UI → Cloudflare Worker → Google Drive.
+
+---
 1. Attach or paste this `SNAPSHOT.md`
 2. Say what you want to work on
-3. Reference the relevant section above
-4. Claude reads this file first, then proceeds without needing chat history
+3. Claude reads this file first, then proceeds without needing chat history
 
 ## How to End a Session
 Ask Claude: "Update SNAPSHOT.md for this session" — Claude generates the updated file.
+
+---
+
+## Auto-Tag Feature (COMPLETED)
+
+### Overview
+Two entry points: ⚡ **Auto-tag from script** button in CastPanel (full doc), ⚡ **Auto-tag** in BubbleMenu (selection only). Both merge with existing tags (skips already-tagged spans) and report unmatched labels as a toast. `[LABEL]` text left untagged; only speech text after it gets voiceTag mark applied.
+
+### Files
+- `src/editor/autoTagger.js` — `buildAutoTagOperations(editor, roles, options?)` returns `{ operations, found, unmatched }`
+- `src/panels/CastPanel.vue` — ⚡ button, `defineEmits(['auto-tag'])`
+- `src/editor/StoryEditor.vue` — `applyAutoTagOps(operations, onComplete)` + `applyAutoTag(roles)` + `syncGroups(buildFn, charLimit)` in `defineExpose`
+- `src/views/EditorView.vue` — `onAutoTag()`, `onDocUpdated()`, `applyAutoTagQueue()`
+
+### Architecture — Key Rules
+1. `buildAutoTagOperations` returns ops, never applies them directly
+2. `applyAutoTagOps` runs the entire setTimeout queue inside StoryEditor's own closure
+3. `capturedEditor = editor.value` captured at call start — stable across async re-renders
+4. `onComplete(doc, json)` — BOTH live doc and JSON come from capturedEditor
+5. `syncGroups(buildFn, charLimit)` — reads `editor.value.state.doc` inside StoryEditor's closure; never cross-component boundary
+
+### Critical bugs resolved
+- **Split-node labels:** `[NARRATOR]` with code mark is a separate node with no text after `]`. Fix: `pendingRole` in `buildAutoTagOperations` — if [LABEL] has no taggable text, hold the role and apply it to the NEXT sibling text node.
+- **Dual StoryEditor instance:** StoryEditor mounts twice during project load. The `capturedEditor` fix ensures the correct (marks-applied) editor is used throughout the queue.
+- **`getEditor()` spam:** `isBold`/`isItalic` computed properties called `getEditor()` on every update — 80+ calls during a queue. Replaced with `ref(false)`.
+- **Vue proxy stripping marks:** docs passed through `emit()` lost voiceTag marks. All group rebuilds now use `syncGroups` or `applyAutoTagOps` which read the doc inside StoryEditor's closure.

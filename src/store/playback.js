@@ -54,6 +54,14 @@ let _wordPositionCache = new Map()
  */
 let _editorRef = null
 
+/**
+ * Downsampled amplitude data for the waveform canvas.
+ * Float32Array of length WAVEFORM_BARS — each value 0..1.
+ * Built once after all buffers are decoded. Non-reactive (raw typed array).
+ */
+let _waveformData = null
+const WAVEFORM_BARS = 200
+
 // ─── Pure helpers (no Vue/Pinia dependency) ───────────────────────────────────
 
 /**
@@ -122,6 +130,72 @@ function computeWordEditorPositions(editor, sentence) {
   }
 }
 
+// ─── Waveform data builder ─────────────────────────────────────────────────────
+
+/**
+ * Downsample all decoded AudioBuffers into a single Float32Array of `bars`
+ * amplitude values (0..1). Merges channels by averaging, then reduces to bars
+ * by taking the RMS of each chunk.
+ *
+ * @param {(AudioBuffer|null)[]} buffers
+ * @param {number} bars
+ * @returns {Float32Array}
+ */
+function buildWaveformData(buffers, bars) {
+  // Concatenate all channel data into one flat array
+  const chunks = []
+  let totalSamples = 0
+
+  for (const buf of buffers) {
+    if (!buf) continue
+    const nCh = buf.numberOfChannels
+    const len = buf.length
+    const merged = new Float32Array(len)
+    for (let ch = 0; ch < nCh; ch++) {
+      const data = buf.getChannelData(ch)
+      for (let i = 0; i < len; i++) merged[i] += data[i] / nCh
+    }
+    chunks.push(merged)
+    totalSamples += len
+  }
+
+  if (totalSamples === 0) return new Float32Array(bars)
+
+  // Downsample to `bars` values using RMS per chunk
+  const result     = new Float32Array(bars)
+  const chunkSize  = totalSamples / bars
+  let   globalIdx  = 0
+  let   chunkIdx   = 0
+  let   posInChunk = 0
+
+  for (let b = 0; b < bars; b++) {
+    let   sumSq = 0
+    let   count = 0
+    const target = Math.round((b + 1) * chunkSize) - Math.round(b * chunkSize)
+
+    for (let s = 0; s < target; s++) {
+      if (chunkIdx >= chunks.length) break
+      const val = chunks[chunkIdx][posInChunk]
+      sumSq += val * val
+      count++
+      posInChunk++
+      if (posInChunk >= chunks[chunkIdx].length) {
+        chunkIdx++
+        posInChunk = 0
+      }
+    }
+    globalIdx += target
+    result[b] = count > 0 ? Math.sqrt(sumSq / count) : 0
+  }
+
+  // Normalise to 0..1
+  let max = 0
+  for (let i = 0; i < bars; i++) if (result[i] > max) max = result[i]
+  if (max > 0) for (let i = 0; i < bars; i++) result[i] /= max
+
+  return result
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const usePlaybackStore = defineStore('playback', {
@@ -159,6 +233,13 @@ export const usePlaybackStore = defineStore('playback', {
      * Shape: [{ groupId, groupIdx, startMs, endMs, hasAudio }]
      */
     groupOffsets: [],
+
+    /**
+     * Increments each time waveform data is rebuilt — AudioPlayerBar
+     * watches this to know when to redraw. The actual Float32Array lives
+     * in _waveformData (non-reactive) to avoid Vue Proxy wrapping typed arrays.
+     */
+    waveformVersion: 0,
   }),
 
   // ─── Getters ───────────────────────────────────────────────────────────────
@@ -175,6 +256,10 @@ export const usePlaybackStore = defineStore('playback', {
 
     /** Human-readable total time, e.g. "4:07" */
     totalTimeDisplay: (state) => formatDuration(state.totalMs),
+
+    /** Returns the raw waveform Float32Array — null until decoded.
+     *  Depends on waveformVersion so Pinia recomputes when data is built. */
+    waveformData: (state) => state.waveformVersion > 0 ? _waveformData : null,
   },
 
   // ─── Actions ───────────────────────────────────────────────────────────────
@@ -256,6 +341,10 @@ export const usePlaybackStore = defineStore('playback', {
           this.loadError = 'No generated audio found. Run Generate first.'
           return
         }
+
+        // Build waveform amplitude data from all decoded buffers
+        _waveformData = buildWaveformData(_buffers, WAVEFORM_BARS)
+        this.waveformVersion++
 
         this._startGroup(startGroupIdx)
       } catch (err) {
@@ -429,6 +518,7 @@ export const usePlaybackStore = defineStore('playback', {
       this.currentGroupIdx = -1
       this.currentMs = 0
       this.currentSentenceId = null
+      _waveformData = null
     },
 
     // ── RAF loop ──────────────────────────────────────────────────────────────

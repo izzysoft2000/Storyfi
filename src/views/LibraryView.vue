@@ -1,46 +1,36 @@
 <template>
   <div class="library">
-    <!-- Header -->
-	<header class="library-header">
-	  <div class="brand-group">
-		<div class="title-row">
-		  <h1 class="app-title">Storyfi</h1>
-		  
-		  <!-- The New Install Button -->
-		  <button 
-			v-if="canInstall" 
-			class="install-pill" 
-			@click="emit('install')"
-		  >
-			Install App
-		  </button>
-		</div>
-		<p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
-	  </div>
 
-	  <div class="actions">
-		<button class="btn-secondary" @click="handleImport">Import .md</button>
-		<button class="btn-primary" @click="handleNew">New Project</button>
-	  </div>
-	</header>
+    <!-- Header — brand only, no action buttons -->
+    <header class="library-header">
+      <div class="brand-group">
+        <div class="title-row">
+          <h1 class="app-title">Storyfi</h1>
+          <button
+            v-if="canInstall"
+            class="install-pill"
+            @click="emit('install')"
+          >
+            Install App
+          </button>
+        </div>
+        <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
+      </div>
+    </header>
 
-    <!-- Project Grid -->
-    <main class="library__main">
-      <div v-if="loading" class="library__empty">
-        <span class="library__empty-icon">⟳</span>
+    <!-- Project grid -->
+    <main class="library-main">
+
+      <!-- Loading -->
+      <div v-if="loading" class="library-empty">
+        <span class="library-empty__icon">⟳</span>
         <p>Loading projects…</p>
       </div>
 
-      <div v-else-if="projects.length === 0" class="library__empty">
-        <span class="library__empty-icon">✦</span>
-        <p class="library__empty-title">No projects yet</p>
-        <p class="library__empty-sub">Import a Markdown file or start a new project to begin.</p>
-        <button class="action-btn action-btn--primary" style="margin-top:20px" @click="createProject">
-          + New Project
-        </button>
-      </div>
-
+      <!-- Grid: existing projects + New card always present -->
       <div v-else class="project-grid">
+
+        <!-- Existing project cards -->
         <div
           v-for="p in projects"
           :key="p.id"
@@ -48,7 +38,7 @@
           @click="openProject(p.id)"
         >
           <div class="project-card__top">
-            <div class="project-card__role-chips">
+            <div class="project-card__dots">
               <span
                 v-for="role in (p.cast ?? []).slice(0, 5)"
                 :key="role.id"
@@ -66,9 +56,7 @@
           <h2 class="project-card__title">{{ p.title }}</h2>
 
           <div class="project-card__meta">
-            <span class="meta-chip">
-              {{ (p.paragraphGroups ?? []).length }} paragraphs
-            </span>
+            <span class="meta-chip">{{ (p.paragraphGroups ?? []).length }} paragraphs</span>
             <span v-if="p.audioSizeBytes > 0" class="meta-chip meta-chip--audio">
               {{ formatBytes(p.audioSizeBytes) }} audio
             </span>
@@ -80,27 +68,29 @@
             <button class="open-btn" @click.stop="openProject(p.id)">Open →</button>
           </div>
         </div>
+
+        <!-- New Project card — always last in the grid -->
+        <button class="new-card" :disabled="creatingProject" @click="createProject">
+          <span class="new-card__plus">+</span>
+          <span class="new-card__label">New Project</span>
+        </button>
+
       </div>
     </main>
 
-    <!-- Storage Bar Footer -->
-    <footer class="library__footer">
+    <!-- Storage footer -->
+    <footer class="library-footer">
       <StorageBar ref="storageBarRef" @manage="showStorageManager = true" />
     </footer>
 
-    <!-- Hidden MD file input -->
-    <input
-      ref="mdInput"
-      type="file"
-      accept=".md,.markdown,text/markdown"
-      style="display:none"
-      @change="onMdFileSelected"
-    />
-
-    <!-- New Project Name Modal -->
+    <!-- New project name modal -->
     <Teleport to="body">
       <Transition name="modal">
-        <div v-if="newProjectModal" class="modal-backdrop" @click.self="newProjectModal = false">
+        <div
+          v-if="newProjectModal"
+          class="modal-backdrop"
+          @click.self="newProjectModal = false"
+        >
           <div class="modal">
             <h3 class="modal__title">New Project</h3>
             <input
@@ -118,17 +108,16 @@
                 class="btn btn--accent"
                 :disabled="!newProjectTitle.trim()"
                 @click="confirmNewProject"
-              >Create</button>
+              >
+                Create
+              </button>
             </div>
           </div>
         </div>
       </Transition>
     </Teleport>
 
-    <!-- Confirm Modal -->
     <ConfirmModal ref="confirmRef" />
-
-    <!-- Toast -->
     <Toast ref="toastRef" />
   </div>
 </template>
@@ -138,30 +127,35 @@ import { ref, onMounted, nextTick } from 'vue'
 import StorageBar   from '@/components/StorageBar.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import Toast        from '@/components/Toast.vue'
-import { getAllProjects, saveProject, deleteProjectFull, clearProjectAudio } from '@/store/db.js'
-import { formatBytes } from '@/storage/quota.js'
-import { requestPersistentStorage, isPersistent } from '@/storage/quota.js'
+import {
+  getAllProjects,
+  saveProject,
+  deleteProjectFull,
+  clearProjectAudio,
+} from '@/store/db.js'
+import { formatBytes, requestPersistentStorage, isPersistent } from '@/storage/quota.js'
 import { useProjectStore } from '@/store/project.js'
 
-const emit = defineEmits(['open-project', 'install'])
+// ─── Props & Emits ────────────────────────────────────────────────────────────
+
+const props = defineProps({ canInstall: Boolean })
+const emit  = defineEmits(['open-project', 'install'])
+
+// ─── State ────────────────────────────────────────────────────────────────────
 
 const store          = useProjectStore()
 const projects       = ref([])
 const loading        = ref(true)
+const creatingProject = ref(false)
 const storageBarRef  = ref(null)
 const confirmRef     = ref(null)
 const toastRef       = ref(null)
-const mdInput        = ref(null)
 
-// New project modal
-const newProjectModal  = ref(false)
-const newProjectTitle  = ref('')
-const newTitleInput    = ref(null)
-const pendingMdContent = ref(null) // set when creating from .md import
+const newProjectModal = ref(false)
+const newProjectTitle = ref('')
+const newTitleInput   = ref(null)
 
-const props = defineProps({
-  canInstall: Boolean
-})
+// ─── Load ─────────────────────────────────────────────────────────────────────
 
 async function load() {
   loading.value = true
@@ -175,72 +169,46 @@ async function load() {
 
 onMounted(async () => {
   await load()
-  // Request persistent storage on first visit if not yet granted
   const already = await isPersistent()
   if (!already) await requestPersistentStorage()
 })
 
-// ─── Create Project ──────────────────────────────────────────────────────────
+// ─── Create project ───────────────────────────────────────────────────────────
 
 function createProject() {
-  pendingMdContent.value = null
-  newProjectTitle.value  = ''
-  newProjectModal.value  = true
+  newProjectTitle.value = ''
+  newProjectModal.value = true
   nextTick(() => newTitleInput.value?.focus())
 }
 
 async function confirmNewProject() {
   const title = newProjectTitle.value.trim()
   if (!title) return
+
   newProjectModal.value = false
+  creatingProject.value = true
 
-  const p = store.createBlankProject(title)
-  if (pendingMdContent.value) {
-    p.sourceMarkdown = pendingMdContent.value
-    pendingMdContent.value = null
+  try {
+    const p = store.createBlankProject(title)
+    await saveProject(p)
+    emit('open-project', p.id)
+  } finally {
+    creatingProject.value = false
   }
-
-  await saveProject(p)
-  await load()
-  storageBarRef.value?.refresh()
-
-  // Navigate to editor
-  emit('open-project', p.id)
 }
 
-// ─── Import .md ─────────────────────────────────────────────────────────────
-
-function importMd() {
-  mdInput.value.value = ''
-  mdInput.value.click()
-}
-
-function onMdFileSelected(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = ev => {
-    pendingMdContent.value = ev.target.result
-    // Pre-fill title from filename (strip extension)
-    newProjectTitle.value = file.name.replace(/\.(md|markdown)$/i, '')
-    newProjectModal.value = true
-    nextTick(() => newTitleInput.value?.focus())
-  }
-  reader.readAsText(file)
-}
-
-// ─── Open Project ────────────────────────────────────────────────────────────
+// ─── Open project ─────────────────────────────────────────────────────────────
 
 function openProject(id) {
   emit('open-project', id)
 }
 
-// ─── Clear Audio ─────────────────────────────────────────────────────────────
+// ─── Clear audio ──────────────────────────────────────────────────────────────
 
 async function clearAudio(p) {
   const ok = await confirmRef.value.open({
     title:        'Clear audio?',
-    message:      `This will remove all generated audio for "${p.title}". Your script, tags, and voice assignments are kept. You can re-generate at any time.`,
+    message:      `This will remove all generated audio for "${p.title}". Your script, tags, and voice assignments are kept.`,
     confirmLabel: 'Clear Audio',
     cancelLabel:  'Cancel',
     variant:      'danger',
@@ -253,7 +221,7 @@ async function clearAudio(p) {
   storageBarRef.value?.refresh()
 }
 
-// ─── Delete Project ──────────────────────────────────────────────────────────
+// ─── Delete project ───────────────────────────────────────────────────────────
 
 async function deleteProjectConfirm(p) {
   const ok = await confirmRef.value.open({
@@ -271,7 +239,7 @@ async function deleteProjectConfirm(p) {
   storageBarRef.value?.refresh()
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function relativeDate(ts) {
   if (!ts) return ''
@@ -288,122 +256,106 @@ function relativeDate(ts) {
 </script>
 
 <style scoped>
+/* ─── Shell ──────────────────────────────────────────────────────────────────── */
+
 .library {
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--color-bg);
   color: var(--color-text);
+  font-family: var(--font-ui);
 }
 
-/* ─── Header ─────────────────────────────────────────── */
-.library__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
+
+.library-header {
   padding: 28px 48px 24px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
-.library__brand { display: flex; flex-direction: column; gap: 2px }
-
-.library__logo {
-  font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--color-text);
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-
-.library__tagline {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  font-weight: 300;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.library__actions { display: flex; gap: 10px }
-
-.action-btn {
+.title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 9px 18px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: var(--font-ui);
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s;
+  gap: 14px;
 }
-.action-btn__icon { font-size: 16px; line-height: 1 }
 
-.action-btn--ghost {
-  background: transparent;
-  border-color: var(--color-border);
-  color: var(--color-text-muted);
-}
-.action-btn--ghost:hover {
-  border-color: var(--color-accent);
+.app-title {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0;
   color: var(--color-text);
 }
 
-.action-btn--primary {
-  background: var(--color-accent);
-  color: #fff;
+.app-subtitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 4px 0 0;
 }
-.action-btn--primary:hover { background: #6a4db0 }
 
-/* ─── Main ───────────────────────────────────────────── */
-.library__main {
+.install-pill {
+  background: var(--color-success);
+  color: var(--color-bg);
+  border: none;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: filter 0.15s, transform 0.15s;
+}
+
+.install-pill:hover {
+  filter: brightness(1.1);
+  transform: scale(1.04);
+}
+
+/* ─── Main ───────────────────────────────────────────────────────────────────── */
+
+.library-main {
   flex: 1;
   overflow-y: auto;
   padding: 40px 48px;
 }
 
-/* ─── Empty State ────────────────────────────────────── */
-.library__empty {
+/* ─── Loading ────────────────────────────────────────────────────────────────── */
+
+.library-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
   min-height: 300px;
-  text-align: center;
   gap: 8px;
   color: var(--color-text-muted);
+  text-align: center;
 }
 
-.library__empty-icon {
-  font-size: 40px;
-  margin-bottom: 8px;
-  opacity: 0.4;
+.library-empty__icon {
+  font-size: 36px;
+  opacity: 0.3;
+  margin-bottom: 4px;
 }
 
-.library__empty-title {
-  font-family: var(--font-display);
-  font-size: 20px;
-  color: var(--color-text);
-  margin: 0;
-}
+/* ─── Project grid ───────────────────────────────────────────────────────────── */
 
-.library__empty-sub {
-  font-size: 14px;
-  max-width: 320px;
-  line-height: 1.6;
-  margin: 0;
-}
-
-/* ─── Project Grid ───────────────────────────────────── */
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
+  align-items: start;
 }
+
+/* ─── Project card ───────────────────────────────────────────────────────────── */
 
 .project-card {
   background: var(--color-surface);
@@ -420,7 +372,7 @@ function relativeDate(ts) {
 .project-card:hover {
   border-color: var(--color-accent);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .project-card__top {
@@ -429,17 +381,29 @@ function relativeDate(ts) {
   align-items: center;
 }
 
-.project-card__role-chips { display: flex; gap: 5px; align-items: center }
+.project-card__dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
 
 .role-dot {
-  width: 10px; height: 10px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  display: inline-block;
   flex-shrink: 0;
 }
 
-.project-card__menu { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s }
-.project-card:hover .project-card__menu { opacity: 1 }
+.project-card__menu {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.project-card:hover .project-card__menu {
+  opacity: 1;
+}
 
 .icon-btn {
   background: none;
@@ -449,11 +413,12 @@ function relativeDate(ts) {
   color: var(--color-text-muted);
   padding: 4px 6px;
   border-radius: 4px;
-  transition: all 0.1s;
   font-family: var(--font-ui);
+  transition: background 0.1s, color 0.1s;
 }
-.icon-btn:hover       { background: var(--color-border); color: var(--color-text) }
-.icon-btn--danger:hover { background: rgba(248,113,113,0.15); color: var(--color-error) }
+
+.icon-btn:hover { background: var(--color-border); color: var(--color-text) }
+.icon-btn--danger:hover { background: rgba(248, 113, 113, 0.15); color: var(--color-error) }
 
 .project-card__title {
   font-family: var(--font-display);
@@ -468,7 +433,11 @@ function relativeDate(ts) {
   -webkit-box-orient: vertical;
 }
 
-.project-card__meta { display: flex; gap: 6px; flex-wrap: wrap }
+.project-card__meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 
 .meta-chip {
   font-size: 11px;
@@ -478,7 +447,12 @@ function relativeDate(ts) {
   color: var(--color-text-muted);
   font-family: var(--font-mono);
 }
-.meta-chip--audio { border-color: rgba(124,92,191,0.4); color: var(--color-accent) }
+
+.meta-chip--audio {
+  border-color: rgba(124, 92, 191, 0.4);
+  color: var(--color-accent);
+}
+
 .meta-chip--muted { opacity: 0.5 }
 
 .project-card__footer {
@@ -503,24 +477,80 @@ function relativeDate(ts) {
   border: none;
   cursor: pointer;
   font-family: var(--font-ui);
-  transition: color 0.15s;
   padding: 0;
+  transition: color 0.15s;
 }
+
 .open-btn:hover { color: var(--color-highlight) }
 
-/* ─── Footer ─────────────────────────────────────────── */
-.library__footer {
+/* ─── New Project card ───────────────────────────────────────────────────────── */
+
+.new-card {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  padding: 20px;
+  /* Match the natural height of a project card with one meta chip */
+  min-height: 168px;
+  color: var(--color-text-muted);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.new-card:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  background: rgba(124, 92, 191, 0.05);
+}
+
+.new-card:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.new-card__plus {
+  font-size: 36px;
+  font-weight: 300;
+  line-height: 1;
+  color: inherit;
+  transition: transform 0.2s;
+}
+
+.new-card:hover:not(:disabled) .new-card__plus {
+  transform: scale(1.15);
+}
+
+.new-card__label {
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  color: inherit;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────────── */
+
+.library-footer {
   padding: 16px 48px;
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
-/* ─── Modal ──────────────────────────────────────────── */
+/* ─── New project modal ──────────────────────────────────────────────────────── */
+
 .modal-backdrop {
-  position: fixed; inset: 0;
-  background: rgba(14,12,24,0.8);
+  position: fixed;
+  inset: 0;
+  background: rgba(14, 12, 24, 0.8);
   backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 100;
 }
 
@@ -531,7 +561,7 @@ function relativeDate(ts) {
   padding: 28px 32px;
   max-width: 440px;
   width: 90%;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -555,9 +585,10 @@ function relativeDate(ts) {
   font-family: var(--font-ui);
   color: var(--color-text);
   outline: none;
-  transition: border-color 0.15s;
   box-sizing: border-box;
+  transition: border-color 0.15s;
 }
+
 .modal__input:focus { border-color: var(--color-accent) }
 .modal__input::placeholder { color: var(--color-text-muted) }
 
@@ -577,6 +608,7 @@ function relativeDate(ts) {
   border: 1px solid transparent;
   transition: all 0.15s;
 }
+
 .btn:disabled { opacity: 0.4; cursor: not-allowed }
 
 .btn--ghost {
@@ -584,46 +616,18 @@ function relativeDate(ts) {
   border-color: var(--color-border);
   color: var(--color-text-muted);
 }
+
 .btn--ghost:hover { border-color: var(--color-text-muted); color: var(--color-text) }
 
 .btn--accent {
   background: var(--color-accent);
   color: #fff;
 }
+
 .btn--accent:hover:not(:disabled) { background: #6a4db0 }
 
-/* Transitions */
-.modal-enter-active, .modal-leave-active { transition: all 0.2s ease }
-.modal-enter-from, .modal-leave-to       { opacity: 0; transform: scale(0.95) }
+/* ─── Transitions ────────────────────────────────────────────────────────────── */
 
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 15px; /* Space between Storyfi and the button */
-}
-
-.install-pill {
-  background: var(--color-success); /* Use your green color variable */
-  color: #0e0c18; /* Dark text for contrast on green */
-  border: none;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  transition: transform 0.2s ease;
-}
-
-.install-pill:hover {
-  transform: scale(1.05);
-  filter: brightness(1.1);
-}
-
-.app-title {
-  font-family: var(--font-display);
-  font-size: 2.5rem;
-  margin: 0;
-}
+.modal-enter-active, .modal-leave-active { transition: opacity 0.2s, transform 0.2s }
+.modal-enter-from, .modal-leave-to       { opacity: 0; transform: scale(0.96) }
 </style>

@@ -24,6 +24,23 @@ export const useProjectStore = defineStore('project', () => {
   const groups       = computed(() => project.value?.paragraphGroups ?? [])
   const projectTitle = computed(() => project.value?.title ?? '')
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+  function defaultVoiceAssignment() {
+    return {
+      providerId: 'minimax',
+      voiceId:    null,
+      voiceName:  null,
+      settings: {
+        speed:   1.0,
+        pitch:   0,
+        volume:  1.0,
+        emotion: '',
+        model:   'speech-2.6-hd',
+      },
+    }
+  }
+
   // ─── Load / Save ────────────────────────────────────────────────────────────
 
   async function loadProject(id) {
@@ -96,7 +113,7 @@ export const useProjectStore = defineStore('project', () => {
     if (!project.value) return
     const existingColors = project.value.cast.map(r => r.color)
     const idx   = project.value.cast.length
-    const id    = `actor_${idx}`
+    const id    = uuid()                // uuid prevents id collision after delete+add
     const label = labelOverride ?? (idx === 0 ? 'Narrator' : `Actor ${idx}`)
     const color = nextRoleColor(existingColors)
 
@@ -104,7 +121,7 @@ export const useProjectStore = defineStore('project', () => {
       id,
       label,
       color,
-      voiceAssignment: null,
+      voiceAssignment: defaultVoiceAssignment(),
     })
     markDirty()
     return project.value.cast[project.value.cast.length - 1]
@@ -134,6 +151,12 @@ export const useProjectStore = defineStore('project', () => {
     markDirty()
   }
 
+  function reorderCast(newOrder) {
+    if (!project.value) return
+    project.value.cast = newOrder
+    markDirty()
+  }
+
   // ─── Factory: create a new blank project ────────────────────────────────────
 
   function createBlankProject(title = 'Untitled Project') {
@@ -146,9 +169,9 @@ export const useProjectStore = defineStore('project', () => {
       sourceMarkdown: '',
       editorState:  null,
       cast: [
-        { id: 'narrator', label: 'Narrator', color: ROLE_COLORS[0], voiceAssignment: null },
-        { id: 'actor_1',  label: 'Actor 1',  color: ROLE_COLORS[1], voiceAssignment: null },
-        { id: 'actor_2',  label: 'Actor 2',  color: ROLE_COLORS[2], voiceAssignment: null },
+        { id: 'narrator', label: 'Narrator', color: ROLE_COLORS[0], voiceAssignment: defaultVoiceAssignment() },
+        { id: 'actor_1',  label: 'Actor 1',  color: ROLE_COLORS[1], voiceAssignment: defaultVoiceAssignment() },
+        { id: 'actor_2',  label: 'Actor 2',  color: ROLE_COLORS[2], voiceAssignment: defaultVoiceAssignment() },
       ],
       paragraphGroups:              [],
       audioSizeBytes:               0,
@@ -167,7 +190,7 @@ export const useProjectStore = defineStore('project', () => {
     // actions
     loadProject, persistProject, closeProject, markDirty,
     setTitle, setEditorState, setOutputFolder, dismissFolderPrompt,
-    addRole, updateRoleLabel, updateRoleColor, updateRoleVoice, deleteRole,
+    addRole, updateRoleLabel, updateRoleColor, updateRoleVoice, deleteRole, reorderCast,
     createBlankProject,
   }
 })

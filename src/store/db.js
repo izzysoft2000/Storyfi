@@ -3,19 +3,20 @@
  * Opens and manages the Storyfi IndexedDB database.
  * Uses the `idb` library for a clean promise-based API.
  *
- * Schema (v1):
+ * Schema (v2):
  *   projects        — keyPath: "id"
  *   sentences       — keyPath: "id", index: "paragraphGroupId"
  *   audio_sentences — keyPath: "sentenceId"   (MP3 Blobs — raw sentences)
  *   audio_stitched  — keyPath: "groupId"      (MP3 Blobs — stitched paragraphs)
  *   api_keys        — keyPath: "providerId"
  *   settings        — keyPath: "key"
+ *   voice_previews  — keyPath: "key"          (MP3 Blobs — cached voice previews)
  */
 
 import { openDB } from 'idb'
 
 const DB_NAME    = 'storyfi_db'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 let _db = null
 
@@ -41,6 +42,10 @@ export async function getDB() {
       }
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' })
+      }
+      // v2: cached voice preview MP3s — key: "{providerId}_{voiceId}"
+      if (!db.objectStoreNames.contains('voice_previews')) {
+        db.createObjectStore('voice_previews', { keyPath: 'key' })
       }
     }
   })
@@ -244,4 +249,31 @@ export async function hasAudioStitched(groupId) {
   const db = await getDB()
   const count = await db.count('audio_stitched', groupId)
   return count > 0
+}
+
+// ─── Voice Previews ───────────────────────────────────────────────────────────
+// Cached short TTS samples, keyed by "{providerId}_{voiceId}".
+// Generated once and reused forever — no settings in the key since
+// previews demonstrate voice character, not speed/pitch/emotion settings.
+
+export async function getVoicePreview(key) {
+  const db = await getDB()
+  const row = await db.get('voice_previews', key)
+  return row?.blob ?? null
+}
+
+export async function saveVoicePreview(key, blob) {
+  const db = await getDB()
+  await db.put('voice_previews', { key, blob })
+}
+
+export async function deleteVoicePreview(key) {
+  const db = await getDB()
+  await db.delete('voice_previews', key)
+}
+
+/** Returns all cached preview keys — used to show cached indicator in the voice picker */
+export async function getAllVoicePreviewKeys() {
+  const db = await getDB()
+  return db.getAllKeys('voice_previews')
 }

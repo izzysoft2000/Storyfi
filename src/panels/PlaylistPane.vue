@@ -1,14 +1,13 @@
 <template>
   <div class="playlist-pane">
 
-    <!-- Toolbar -->
+    <!-- Toolbar: Generate + Export only (label + Settings moved to workspace) -->
     <div class="playlist-toolbar">
-      <span class="toolbar-label">Playlist</span>
       <div class="toolbar-right">
-        <button class="tb-btn" title="Settings" @click="$emit('open-settings')">⚙ Settings</button>
         <button
           class="tb-btn tb-btn--primary"
-          :disabled="gen.isGenerating || (!hasTaggedSpans && gen.groups.length === 0)"
+          :disabled="gen.isGenerating || (!hasTaggedSpans && gen.groups.length === 0) || !isOnline"
+          :title="!isOnline ? 'Offline — generation unavailable' : ''"
           @click="$emit('generate')"
         >{{ gen.isGenerating ? '⟳ Generating…' : '▶ Generate' }}</button>
         <button class="tb-btn" :disabled="!hasReadyAudio" @click="$emit('export')">↓ Export</button>
@@ -108,6 +107,7 @@
               </svg>
             </button>
             <button class="group-row__regen" title="Regenerate"
+              :disabled="!isOnline"
               @click.stop="$emit('regenerate-group', group.id)">🔄</button>
           </div>
 
@@ -152,9 +152,10 @@ import AudioPlayerBar         from '@/components/AudioPlayerBar.vue'
 const props = defineProps({
   hasTaggedSpans: { type: Boolean, default: false },
   taggedSpans:    { type: Array,   default: () => [] },
+  isOnline:       { type: Boolean, default: true },
 })
 
-defineEmits(['generate', 'regenerate-group', 'open-settings', 'export'])
+defineEmits(['generate', 'regenerate-group', 'export'])
 
 const gen      = useGenerationStore()
 const playback = usePlaybackStore()
@@ -211,13 +212,8 @@ function fmt(ms) { return formatDuration(ms) }
 }
 
 .playlist-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: flex-end;
   padding: 8px 10px; border-bottom: 1px solid var(--color-border); flex-shrink: 0;
-}
-
-.toolbar-label {
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--color-text-muted);
 }
 
 .toolbar-right { display: flex; gap: 5px }

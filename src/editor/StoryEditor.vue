@@ -1,35 +1,6 @@
 <template>
   <div class="story-editor">
 
-    <!-- Toolbar -->
-    <div class="editor-toolbar">
-      <div class="editor-toolbar__left">
-        <button class="tb-btn" title="Import Markdown" @click="triggerImport">
-          ↑ Import .md
-        </button>
-        <div class="tb-divider" />
-        <button class="tb-btn" :class="{ active: editor?.isActive('bold') }"
-          title="Bold (Ctrl+B)" @click="editor?.chain().focus().toggleBold().run()">
-          <b>B</b>
-        </button>
-        <button class="tb-btn" :class="{ active: editor?.isActive('italic') }"
-          title="Italic (Ctrl+I)" @click="editor?.chain().focus().toggleItalic().run()">
-          <i>I</i>
-        </button>
-        <div class="tb-divider" />
-        <button
-          class="tb-btn tb-btn--break"
-          title="Insert Segment Break (Ctrl+Shift+Enter)"
-          @click="editor?.chain().focus().insertSegmentBreak().run()"
-        >§ Break</button>
-      </div>
-      <div class="editor-toolbar__right">
-        <span class="char-count">
-          {{ charCount }} chars
-        </span>
-      </div>
-    </div>
-
     <!-- Bubble Menu — appears on text selection -->
     <BubbleMenu
       v-if="editor"
@@ -39,43 +10,62 @@
       class="bubble-menu"
     >
       <div class="bubble-menu__inner">
-        <span class="bubble-menu__label">Tag as:</span>
 
-        <!-- Role chips -->
-        <button
-          v-for="role in cast"
-          :key="role.id"
-          class="role-chip"
-          :class="{ 'role-chip--active': editor.isActive('voiceTag', { roleId: role.id }) }"
-          :style="{
-            '--role-color': role.color,
-            borderColor: role.color,
-            background: editor.isActive('voiceTag', { roleId: role.id })
-              ? role.color
-              : 'transparent'
-          }"
-          :title="`Tag as ${role.label}`"
-          @mousedown.prevent="applyVoiceTag(role)"
-        >
-          {{ role.label }}
-        </button>
+        <!-- Role chips — only when text is selected -->
+        <template v-if="hasSelection">
+          <span class="bubble-menu__label">Tag as:</span>
 
-        <!-- Remove tag (only shown if selection is already tagged) -->
+          <button
+            v-for="role in cast"
+            :key="role.id"
+            class="role-chip"
+            :class="{ 'role-chip--active': editor.isActive('voiceTag', { roleId: role.id }) }"
+            :style="{
+              '--role-color': role.color,
+              borderColor: role.color,
+              background: editor.isActive('voiceTag', { roleId: role.id })
+                ? role.color
+                : 'transparent'
+            }"
+            :title="`Tag as ${role.label}`"
+            @mousedown.prevent="applyVoiceTag(role)"
+          >
+            {{ role.label }}
+          </button>
+
+          <div class="bubble-divider" />
+
+          <!-- Auto-tag selection — scans [LABEL] patterns in selected text only -->
+          <button
+            class="bubble-autotag"
+            title="Auto-tag [LABEL] patterns in selected text"
+            @mousedown.prevent="autoTagSelection"
+          >⚡ Auto-tag</button>
+
+          <div class="bubble-divider" />
+        </template>
+
+        <!-- Cursor-only label (no selection, just inside a tag) -->
+        <span v-else class="bubble-menu__label">Tagged span:</span>
+
+        <!-- Remove — shown whenever cursor/selection is inside a tag -->
         <button
           v-if="selectionIsTagged"
           class="role-chip role-chip--remove"
-          title="Remove voice tag"
-          @mousedown.prevent="editor.chain().focus().unsetVoiceTag().run()"
+          title="Remove voice tag from this span"
+          @mousedown.prevent="editor.chain().focus().extendMarkRange('voiceTag').unsetVoiceTag().run()"
         >✕ Remove</button>
 
-        <div class="bubble-divider" />
+        <!-- Segment break — only when text is selected -->
+        <template v-if="hasSelection">
+          <div v-if="!selectionIsTagged" class="bubble-divider" />
+          <button
+            class="bubble-break"
+            title="Insert Segment Break here (Ctrl+Shift+Enter)"
+            @mousedown.prevent="editor.chain().focus().insertSegmentBreak().run()"
+          >§</button>
+        </template>
 
-        <!-- Segment break -->
-        <button
-          class="bubble-break"
-          title="Insert Segment Break here (Ctrl+Shift+Enter)"
-          @mousedown.prevent="editor.chain().focus().insertSegmentBreak().run()"
-        >§</button>
       </div>
     </BubbleMenu>
 
@@ -107,6 +97,9 @@ import { marked }       from 'marked'
 import { debounce }     from '@/utils/debounce.js'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { buildAutoTagOperations } from '@/editor/autoTagger.js'
+
+import { extractTaggedSpans }    from '@/editor/splitter.js'
 
 // ─── Playback highlight plugin ─────────────────────────────────────────────────
 // Drives transient ProseMirror decorations during audio playback.
@@ -158,6 +151,8 @@ const props = defineProps({
 const emit = defineEmits([
   'update:modelValue',  // serialised JSON doc on every change
   'import-markdown',    // emitted with raw MD string after file import
+  'auto-tag-result',    // emitted after selection auto-tag with { tagged, skipped, unmatched }
+  'doc-updated',        // emitted with live ProseMirror doc on every Tiptap transaction
 ])
 
 // ─── Editor setup ─────────────────────────────────────────────────────────────
@@ -185,6 +180,9 @@ const editor = useEditor({
 
   onUpdate: ({ editor }) => {
     debouncedEmit(editor.getJSON())
+    // Signal EditorView to sync groups. Doc is read inside StoryEditor's
+    // own closure via syncGroups — never passes through Vue's emit/proxy chain.
+    emit('doc-updated')
   },
 
   editorProps: {
@@ -203,7 +201,7 @@ watch(() => props.modelValue, val => {
   if (!editor.value || !val) return
   const current = editor.value.getJSON()
   if (JSON.stringify(current) !== JSON.stringify(val)) {
-    editor.value.commands.setContent(val, false)
+    editor.value.commands.setContent(val, true)
   }
 }, { deep: true })
 
@@ -215,12 +213,23 @@ const charCount = computed(() =>
 )
 
 // ─── Bubble menu logic ────────────────────────────────────────────────────────
+
+// True when the cursor or selection is inside a voiceTag mark
 const selectionIsTagged = computed(() =>
   editor.value?.isActive('voiceTag') ?? false
 )
 
-function shouldShowBubble({ from, to }) {
-  return from !== to // show whenever text is selected
+// True only when text is actually selected (from !== to)
+const hasSelection = computed(() => {
+  if (!editor.value) return false
+  const { from, to } = editor.value.state.selection
+  return from !== to
+})
+
+function shouldShowBubble({ editor: ed, from, to }) {
+  // Show if text is selected, OR if the cursor is sitting inside a tagged span
+  const cursorInTag = ed.isActive('voiceTag')
+  return from !== to || cursorInTag
 }
 
 function applyVoiceTag(role) {
@@ -229,6 +238,14 @@ function applyVoiceTag(role) {
     .focus()
     .setVoiceTag({ roleId: role.id, roleLabel: role.label, color: role.color })
     .run()
+}
+
+function autoTagSelection() {
+  if (!editor.value) return
+  const { from, to } = editor.value.state.selection
+  if (from === to) return
+  const result = buildAutoTagOperations(editor.value, props.cast, { from, to })
+  emit('auto-tag-result', result)
 }
 
 // ─── Markdown import ──────────────────────────────────────────────────────────
@@ -261,6 +278,12 @@ defineExpose({
     editor.value?.commands.setContent(html, true)
   },
 
+  /** Trigger the hidden file input — called by the global toolbar */
+  triggerImport,
+
+  /** Reactive char count — consumed by EditorView global toolbar */
+  charCount,
+
   /** Highlight a word range via ProseMirror decoration (Phase 4 — MiniMax word timings) */
   highlightWord(from, to) {
     if (!editor.value?.view) return
@@ -285,7 +308,6 @@ defineExpose({
     )
   },
 
-  /** Expose the raw Tiptap editor for word-position computation in playback store */
   getEditor: () => editor.value ?? null,
 
   /** Get the raw ProseMirror doc for generation pipeline */
@@ -293,6 +315,59 @@ defineExpose({
 
   /** Get serialised JSON */
   getJSON: () => editor.value?.getJSON(),
+
+  /** Run auto-tagger against provided roles using a queued approach.
+   *  Each operation fires through the normal Tiptap path so onUpdate triggers.
+   *  Returns a promise resolving to { found, tagged, unmatched }.
+   */
+  /** Apply auto-tag operations entirely within StoryEditor's closure.
+   *  This avoids cross-component editor instance divergence — editor.value
+   *  is always the correct live instance here.
+   *  @param {Array}    operations  — [{from, to, role}] from buildAutoTagOperations
+   *  @param {Function} onComplete  — called with the live doc when all ops done
+   */
+  applyAutoTagOps: (operations, onComplete) => {
+    if (!editor.value) return
+    // Capture editor.value NOW — editorRef may point to a different instance
+    // by the time the setTimeout chain completes (due to re-renders from onUpdate)
+    const capturedEditor = editor.value
+
+    if (operations.length === 0) {
+      // Marks already present — pass doc AND json from the captured editor
+      onComplete(capturedEditor.state.doc, capturedEditor.getJSON())
+      return
+    }
+
+    let i = 0
+    function applyNext() {
+      if (i >= operations.length) {
+        // All ops done — pass final doc and json from the SAME captured editor
+        onComplete(capturedEditor.state.doc, capturedEditor.getJSON())
+        return
+      }
+      const { from, to, role } = operations[i++]
+      capturedEditor.chain()
+        .setTextSelection({ from, to })
+        .setVoiceTag({ roleId: role.id, roleLabel: role.label, color: role.color })
+        .run()
+      setTimeout(applyNext, 0)
+    }
+    applyNext()
+  },
+
+  applyAutoTag: (roles, options) => {
+    if (!editor.value) return { operations: [], found: 0, unmatched: [] }
+    const result = buildAutoTagOperations(editor.value, roles, options)
+    return result
+  },
+
+  /** Rebuild generation groups from inside StoryEditor's closure.
+   *  Bypasses the Vue component proxy chain — editor.value.state.doc is
+   *  accessed where it lives, not through cross-component ref indirection.
+   */
+  syncGroups: (buildFn, charLimit) => {
+    if (editor.value) buildFn(editor.value.state.doc, charLimit)
+  },
 })
 </script>
 
@@ -365,56 +440,6 @@ defineExpose({
   overflow: hidden;
 }
 
-/* ─── Toolbar ────────────────────────────────────────────── */
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
-  flex-shrink: 0;
-  gap: 8px;
-}
-
-.editor-toolbar__left,
-.editor-toolbar__right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.tb-btn {
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  color: var(--color-text-muted);
-  font-size: 12px;
-  font-family: var(--font-ui);
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: all 0.12s;
-  white-space: nowrap;
-}
-.tb-btn:hover        { background: var(--color-border); color: var(--color-text) }
-.tb-btn.active       { background: rgba(124,92,191,0.2); border-color: var(--color-accent); color: var(--color-accent) }
-.tb-btn--break       { border-color: var(--color-border); color: var(--color-accent) }
-.tb-btn--break:hover { background: rgba(124,92,191,0.15); border-color: var(--color-accent) }
-
-.tb-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--color-border);
-  margin: 0 4px;
-}
-
-.char-count {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--color-text-muted);
-  opacity: 0.6;
-}
-
 /* ─── Bubble Menu ────────────────────────────────────────── */
 .bubble-menu {
   z-index: 50;
@@ -481,6 +506,20 @@ defineExpose({
   transition: all 0.12s;
 }
 .bubble-break:hover { background: rgba(124,92,191,0.15) }
+
+.bubble-autotag {
+  background: rgba(124,92,191,0.1);
+  border: 1px solid rgba(124,92,191,0.4);
+  border-radius: 5px;
+  color: var(--color-accent);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.bubble-autotag:hover { background: rgba(124,92,191,0.22); border-color: var(--color-accent) }
 
 /* ─── Editor Scroll Area ─────────────────────────────────── */
 .editor-scroll {
