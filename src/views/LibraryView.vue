@@ -85,6 +85,7 @@
     <footer class="library__footer">
       <StorageBar ref="storageBarRef" @manage="showStorageManager = true" />
     </footer>
+    <div class="library__safe-bottom" />
 
     <!-- Hidden MD file input -->
     <input
@@ -586,16 +587,19 @@ function relativeDate(ts) {
 /* ─── Footer ─────────────────────────────────────────── */
 .library__footer {
   padding: 16px 48px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
+/* Fills the iPhone home indicator zone */
+.library__safe-bottom {
+  height: env(safe-area-inset-bottom, 20px);
+  background: var(--color-bg);
+  flex-shrink: 0;
+}
+
 @media (max-width: 600px) {
-  .library__footer {
-    padding: 12px 16px;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
-  }
+  .library__footer { padding: 12px 16px; }
 }
 
 /* ─── Modal ──────────────────────────────────────────── */

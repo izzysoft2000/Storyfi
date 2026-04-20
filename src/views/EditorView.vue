@@ -144,7 +144,9 @@
 
     </nav>
 
-    <!-- Save / online status pill -->
+    <!-- Explicit safe-area filler — fills the home indicator zone on iPhone.
+         More reliable than padding on the bar itself. -->
+    <div class="m-safe-bottom" />
     <div class="m-status">
       <span v-if="store.isSaving" class="m-status__dot m-status__dot--saving">●</span>
       <span v-else-if="store.isDirty" class="m-status__dot m-status__dot--dirty">●</span>
@@ -1148,12 +1150,17 @@ function goLibrary() { emit('go-library') }
   align-items: center;
   height: 56px;
   padding: 0 4px;
-  padding-bottom: env(safe-area-inset-bottom);
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
   gap: 2px;
-  box-sizing: content-box;
+}
+
+/* Fills the iPhone home indicator zone with the bar's background color */
+.m-safe-bottom {
+  height: env(safe-area-inset-bottom, 20px);
+  background: var(--color-surface);
+  flex-shrink: 0;
 }
 
 .m-nav-btn {
