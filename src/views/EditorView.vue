@@ -1121,6 +1121,7 @@ function goLibrary() { emit('go-library') }
 .m-drawer__body {
   flex: 1;
   overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .m-backdrop {
