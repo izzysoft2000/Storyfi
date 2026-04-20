@@ -356,8 +356,8 @@ function relativeDate(ts) {
 
 <style scoped>
 .library {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -368,6 +368,9 @@ function relativeDate(ts) {
 
 @media (display-mode: standalone) {
   .library {
+    position: fixed;
+    inset: 0;
+    height: auto;
     padding-top: env(safe-area-inset-top);
   }
 }
