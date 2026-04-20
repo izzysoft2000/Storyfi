@@ -998,9 +998,7 @@ function goLibrary() { emit('go-library') }
   overflow: hidden;
   background: var(--color-bg);
   position: relative;
-  /* Push content below status bar and above home indicator */
   padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
   box-sizing: border-box;
 }
 
@@ -1078,11 +1076,11 @@ function goLibrary() { emit('go-library') }
 
 /* ─── Cast drawer ──────────────────────────────────────────────────────────── */
 .m-drawer {
-  position: absolute;
-  top: 0;
+  position: fixed;
+  top: env(safe-area-inset-top);
   left: 0;
+  bottom: 0;
   width: min(320px, 85vw);
-  height: 100%;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
   z-index: 50;
@@ -1126,7 +1124,7 @@ function goLibrary() { emit('go-library') }
 }
 
 .m-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.5);
   z-index: 49;
@@ -1150,10 +1148,12 @@ function goLibrary() { emit('go-library') }
   align-items: center;
   height: 56px;
   padding: 0 4px;
+  padding-bottom: env(safe-area-inset-bottom);
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
   gap: 2px;
+  box-sizing: content-box;
 }
 
 .m-nav-btn {
