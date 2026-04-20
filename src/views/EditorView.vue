@@ -999,8 +999,13 @@ function goLibrary() { emit('go-library') }
   flex-direction: column;
   overflow: hidden;
   background: var(--color-bg);
-  padding-top: env(safe-area-inset-top);
   box-sizing: border-box;
+}
+
+@media (display-mode: standalone) {
+  .m-workspace {
+    padding-top: env(safe-area-inset-top);
+  }
 }
 
 /* ─── Top bar ──────────────────────────────────────────────────────────────── */
@@ -1078,7 +1083,7 @@ function goLibrary() { emit('go-library') }
 /* ─── Cast drawer ──────────────────────────────────────────────────────────── */
 .m-drawer {
   position: fixed;
-  top: env(safe-area-inset-top);
+  top: 0;
   left: 0;
   bottom: 0;
   width: min(320px, 85vw);
@@ -1133,6 +1138,10 @@ function goLibrary() { emit('go-library') }
   backdrop-filter: blur(2px);
 }
 
+@media (display-mode: standalone) {
+  .m-drawer { top: env(safe-area-inset-top); }
+}
+
 /* Drawer transitions */
 .m-drawer-enter-active { transition: transform 0.25s cubic-bezier(0.4,0,0.2,1) }
 .m-drawer-leave-active { transition: transform 0.2s cubic-bezier(0.4,0,1,1) }
@@ -1156,11 +1165,19 @@ function goLibrary() { emit('go-library') }
   gap: 2px;
 }
 
-/* Fills the iPhone home indicator zone with the bar's background color */
+/* Safe area filler — ONLY in standalone PWA mode.
+   In Safari browser, env(safe-area-inset-bottom) = Safari chrome height (~83px),
+   which creates a huge gap. This filler is only needed when installed as a PWA. */
 .m-safe-bottom {
-  height: env(safe-area-inset-bottom, 0px);
+  height: 0;
   background: var(--color-surface);
   flex-shrink: 0;
+}
+
+@media (display-mode: standalone) {
+  .m-safe-bottom {
+    height: env(safe-area-inset-bottom, 34px);
+  }
 }
 
 .m-nav-btn {

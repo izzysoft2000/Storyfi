@@ -357,14 +357,19 @@ function relativeDate(ts) {
 <style scoped>
 .library {
   position: fixed;
-  inset: 0;                   /* anchors all 4 edges — guaranteed edge-to-edge on iOS */
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--color-bg);
   color: var(--color-text);
-  padding-top: env(safe-area-inset-top);
   box-sizing: border-box;
+}
+
+@media (display-mode: standalone) {
+  .library {
+    padding-top: env(safe-area-inset-top);
+  }
 }
 
 /* ─── Header ─────────────────────────────────────────── */
@@ -591,11 +596,17 @@ function relativeDate(ts) {
   flex-shrink: 0;
 }
 
-/* Fills the iPhone home indicator zone */
+/* Safe area filler — ONLY in standalone PWA mode */
 .library__safe-bottom {
-  height: env(safe-area-inset-bottom, 0px);
+  height: 0;
   background: var(--color-bg);
   flex-shrink: 0;
+}
+
+@media (display-mode: standalone) {
+  .library__safe-bottom {
+    height: env(safe-area-inset-bottom, 34px);
+  }
 }
 
 @media (max-width: 600px) {
