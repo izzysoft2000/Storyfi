@@ -6,14 +6,12 @@
        ══════════════════════════════════════════════════════════════════════ -->
   <div v-if="isMobile" class="m-workspace" :class="{ 'm-workspace--landscape': !isPortrait }">
 
-    <!-- Top bar -->
+    <!-- Top bar: back | title | settings -->
     <header class="m-toolbar">
       <button class="m-tb-btn" @click="goLibrary">←</button>
-      <div
-        v-if="!editingTitle"
-        class="m-title"
-        @click="startEditTitle"
-      >{{ store.projectTitle }}</div>
+      <div v-if="!editingTitle" class="m-title" @click="startEditTitle">
+        {{ store.projectTitle }}
+      </div>
       <input
         v-else
         ref="titleInputRef"
@@ -24,10 +22,11 @@
         @keydown.enter="commitTitle($event.target.value)"
         @keydown.esc="editingTitle = false"
       />
+      <span v-if="!isOnline" class="m-status-globe m-status-globe--offline" title="Offline">🌐</span>
       <button class="m-tb-btn" @click="settingsRef?.open()">⚙</button>
     </header>
 
-    <!-- Swipeable panel track -->
+    <!-- Swipeable panel track: Cast (0) | Editor (1) | Playlist (2) -->
     <div
       class="m-panels"
       @touchstart.passive="onTouchStart"
@@ -36,21 +35,47 @@
     >
       <div class="m-panels__track" :style="trackStyle">
 
-        <!-- Editor panel -->
+        <!-- ── Cast panel ── -->
         <div class="m-panel">
-          <StoryEditor
-            :ref="setEditorRef"
-            :model-value="store.project?.editorState"
-            :cast="store.cast"
-            :char-limit="charLimit"
-            @update:model-value="onEditorUpdate"
-            @import-markdown="onMarkdownImported"
-            @auto-tag-result="onAutoTagResult"
-            @doc-updated="onDocUpdated"
-          />
+          <div class="m-panel-toolbar">
+            <span class="m-panel-title">VOICE CAST</span>
+            <span class="m-panel-badge">{{ store.cast.length }}/10</span>
+          </div>
+          <div class="m-panel-body">
+            <CastPanel
+              @role-updated="onRoleUpdated"
+              @role-deleted="onRoleDeleted"
+              @auto-tag="onAutoTag"
+            />
+          </div>
         </div>
 
-        <!-- Playlist panel -->
+        <!-- ── Editor panel ── -->
+        <div class="m-panel">
+          <div class="m-panel-toolbar">
+            <button class="m-tool-btn" title="Import Markdown" @click="onImport">↑ Import</button>
+            <div class="m-tool-divider" />
+            <button class="m-tool-btn" title="Bold (Ctrl+B)" @click="onBold"><b>B</b></button>
+            <button class="m-tool-btn" title="Italic (Ctrl+I)" @click="onItalic"><i>I</i></button>
+            <div class="m-tool-divider" />
+            <button class="m-tool-btn" title="Segment Break" @click="onBreak">§</button>
+            <span class="m-tool-charcount">{{ charCount }}</span>
+          </div>
+          <div class="m-panel-body">
+            <StoryEditor
+              :ref="setEditorRef"
+              :model-value="store.project?.editorState"
+              :cast="store.cast"
+              :char-limit="charLimit"
+              @update:model-value="onEditorUpdate"
+              @import-markdown="onMarkdownImported"
+              @auto-tag-result="onAutoTagResult"
+              @doc-updated="onDocUpdated"
+            />
+          </div>
+        </div>
+
+        <!-- ── Playlist panel ── -->
         <div class="m-panel">
           <PlaylistPane
             :has-tagged-spans="taggedSpans.length > 0"
@@ -66,84 +91,36 @@
       </div>
     </div>
 
-    <!-- Cast drawer (slide from left) -->
-    <Transition name="m-drawer">
-      <div v-if="castOpen" class="m-drawer">
-        <div class="m-drawer__header">
-          <span class="m-drawer__title">Voice Cast</span>
-          <button class="m-drawer__close" @click="castOpen = false">✕</button>
-        </div>
-        <div class="m-drawer__body">
-          <CastPanel
-            @role-updated="onRoleUpdated"
-            @role-deleted="onRoleDeleted"
-            @auto-tag="onAutoTag"
-          />
-        </div>
-      </div>
-    </Transition>
-    <Transition name="m-backdrop">
-      <div v-if="castOpen" class="m-backdrop" @click="castOpen = false" />
-    </Transition>
-
-    <!-- Bottom tab bar -->
+    <!-- Bottom nav: Cast | Edit | Play — centered, navigation only -->
     <nav class="m-bottom-bar">
-
-      <!-- Cast drawer toggle -->
       <button
-        class="m-nav-btn m-nav-btn--cast"
-        :class="{ active: castOpen }"
-        @click="castOpen = !castOpen"
-        title="Voice Cast"
+        class="m-tab"
+        :class="{ active: activePanel === 'cast' }"
+        @click="setActivePanel('cast')"
       >
         <span class="m-nav-icon">🎭</span>
         <span class="m-nav-label">Cast</span>
       </button>
-
-      <!-- Context actions — editor only (import, formatting) -->
-      <div class="m-context-actions">
-        <template v-if="activePanel === 'editor'">
-          <button class="m-act-btn" title="Import Markdown" @click="onImport">↑</button>
-          <button class="m-act-btn" title="Bold" @click="onBold"><b>B</b></button>
-          <button class="m-act-btn" title="Italic" @click="onItalic"><i>I</i></button>
-          <button class="m-act-btn" title="Segment Break" @click="onBreak">§</button>
-        </template>
-      </div>
-
-      <!-- Panel tabs -->
-      <div class="m-tabs">
-        <button
-          class="m-tab"
-          :class="{ active: activePanel === 'editor' }"
-          @click="setActivePanel('editor')"
-        >
-          <span class="m-nav-icon">✏️</span>
-          <span class="m-nav-label">Editor</span>
-        </button>
-        <button
-          class="m-tab"
-          :class="{ active: activePanel === 'playlist' }"
-          @click="setActivePanel('playlist')"
-        >
-          <span class="m-nav-icon">▶</span>
-          <span class="m-nav-label">Playlist</span>
-        </button>
-      </div>
-
+      <button
+        class="m-tab"
+        :class="{ active: activePanel === 'editor' }"
+        @click="setActivePanel('editor')"
+      >
+        <span class="m-nav-icon">✏️</span>
+        <span class="m-nav-label">Edit</span>
+      </button>
+      <button
+        class="m-tab"
+        :class="{ active: activePanel === 'playlist' }"
+        @click="setActivePanel('playlist')"
+      >
+        <span class="m-nav-icon">▶</span>
+        <span class="m-nav-label">Play</span>
+      </button>
     </nav>
 
-    <!-- Explicit safe-area filler — fills the home indicator zone on iPhone.
-         More reliable than padding on the bar itself. -->
-    <div class="m-safe-bottom" />
-    <div class="m-status">
-      <span v-if="store.isSaving" class="m-status__dot m-status__dot--saving">●</span>
-      <span v-else-if="store.isDirty" class="m-status__dot m-status__dot--dirty">●</span>
-      <span v-else class="m-status__dot m-status__dot--ok">●</span>
-      <span
-        class="m-status__dot"
-        :class="isOnline ? 'm-status__dot--online' : 'm-status__dot--offline'"
-      >●</span>
-    </div>
+    <!-- Status dots -->
+
 
     <!-- Modals (shared) -->
     <FolderPromptModal ref="folderPromptRef" />
@@ -406,7 +383,6 @@ const { layout, movePanel, insertInNewColumn, setColumnWidth, resetLayout } = us
 const {
   isMobile, isPortrait,
   activePanel, setActivePanel,
-  castOpen,
   trackStyle, onTouchStart, onTouchMove, onTouchEnd,
 } = useMobileLayout()
 
@@ -1058,91 +1034,21 @@ function goLibrary() { emit('go-library') }
 
 .m-panels__track {
   display: flex;
-  width: 200vw;      /* 2 panels × 100vw — use vw not % to match transform */
+  width: 300vw;      /* 3 panels × 100vw — use vw not % to match transform */
   height: 100%;
   will-change: transform;
 }
 
 .m-panel {
-  width: 100vw;      /* each panel = exactly 1 viewport width */
+  width: 100vw;
   height: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-/* ─── Cast drawer ──────────────────────────────────────────────────────────── */
-.m-drawer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: min(320px, 85vw);
-  background: var(--color-surface);
-  border-right: 1px solid var(--color-border);
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 4px 0 24px rgba(0,0,0,0.4);
-}
-
-.m-drawer__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
-.m-drawer__title {
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.m-drawer__close {
-  all: unset;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  font-size: 14px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: color 0.15s;
-}
-.m-drawer__close:active { color: var(--color-text) }
-
-.m-drawer__body {
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.m-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 49;
-  backdrop-filter: blur(2px);
-}
-
-@media (display-mode: standalone) {
-  .m-drawer { top: env(safe-area-inset-top); }
-}
-
-/* Drawer transitions */
-.m-drawer-enter-active { transition: transform 0.25s cubic-bezier(0.4,0,0.2,1) }
-.m-drawer-leave-active { transition: transform 0.2s cubic-bezier(0.4,0,1,1) }
-.m-drawer-enter-from,
-.m-drawer-leave-to    { transform: translateX(-100%) }
-
-.m-backdrop-enter-active { transition: opacity 0.25s ease }
-.m-backdrop-leave-active { transition: opacity 0.2s ease }
-.m-backdrop-enter-from,
-.m-backdrop-leave-to    { opacity: 0 }
+/* ─── Cast drawer ──────────────────────────────────────────────────────────── */
 
 /* ─── Bottom bar ───────────────────────────────────────────────────────────── */
 .m-bottom-bar {
@@ -1158,22 +1064,6 @@ function goLibrary() { emit('go-library') }
 
 .m-safe-bottom { display: none; }
 
-.m-nav-btn {
-  all: unset;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  min-width: 44px;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.m-nav-btn.active,
-.m-nav-btn:active { background: rgba(124,92,191,0.15) }
 
 .m-nav-icon { font-size: 16px; line-height: 1 }
 .m-nav-label {
@@ -1183,42 +1073,6 @@ function goLibrary() { emit('go-library') }
   letter-spacing: 0.04em;
 }
 
-.m-context-actions {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-}
-
-.m-act-btn {
-  all: unset;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  color: var(--color-text-muted);
-  transition: color 0.15s, background 0.15s;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.m-act-btn:active { color: var(--color-text); background: rgba(255,255,255,0.06) }
-.m-act-btn:disabled { opacity: 0.3; cursor: not-allowed }
-.m-act-btn--generate {
-  background: var(--color-accent);
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-.m-act-btn--generate:active { background: #6b4dab }
-.m-act-btn--generate:disabled { background: rgba(124,92,191,0.3); color: rgba(255,255,255,0.4) }
-
-.m-tabs {
-  display: flex;
-  flex-shrink: 0;
-}
 
 .m-tab {
   all: unset;
@@ -1227,38 +1081,96 @@ function goLibrary() { emit('go-library') }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  min-width: 52px;
+  gap: 3px;
+  padding: 6px 20px;
+  border-radius: 10px;
+  min-width: 64px;
   transition: background 0.15s;
 }
 .m-tab .m-nav-label { transition: color 0.15s }
-.m-tab.active .m-nav-icon { filter: none }
 .m-tab.active .m-nav-label { color: var(--color-accent) }
+.m-tab.active { background: rgba(124,92,191,0.12) }
 .m-tab:active { background: rgba(255,255,255,0.05) }
 
-/* Active tab indicator */
-.m-tab.active {
-  background: rgba(124,92,191,0.12);
+/* ─── Status dots ──────────────────────────────────────────────────────────── */
+/* ─── Panel toolbar (inside each swipeable panel) ─────────────────────────── */
+.m-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 10px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
 
-/* ─── Status dots ──────────────────────────────────────────────────────────── */
-.m-status {
-  position: absolute;
-  top: 52px;
-  right: 8px;
-  display: flex;
-  gap: 4px;
-  pointer-events: none;
-  z-index: 5;
+.m-panel-title {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
 }
-.m-status__dot         { font-size: 8px }
-.m-status__dot--saving { color: var(--color-warning); animation: pulse 1s ease infinite }
-.m-status__dot--dirty  { color: var(--color-warning) }
-.m-status__dot--ok     { color: var(--color-success) }
-.m-status__dot--online  { color: var(--color-success) }
-.m-status__dot--offline { color: var(--color-error) }
+
+.m-panel-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-left: 6px;
+}
+
+.m-tool-btn {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.m-tool-btn:active {
+  background: rgba(124, 92, 191, 0.18);
+  color: var(--color-text);
+}
+
+.m-tool-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.m-tool-charcount {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-left: auto;
+  padding-right: 2px;
+}
+
+.m-panel-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Offline globe indicator ─────────────────────────────────────────────── */
+.m-status-globe {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.m-status-globe--offline { filter: grayscale(1) brightness(0.5) sepia(1) hue-rotate(-30deg) saturate(3); }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.4 } }
 
 /* ─── Landscape adjustments ────────────────────────────────────────────────── */
