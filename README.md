@@ -20,7 +20,7 @@ npm run build      # production build
 npm run preview    # preview production build locally
 ```
 
-Deployed at **https://storyfi.izzysoft.ca** via Cloudflare Pages.
+Deployed at **[https://storyfi.izzysoft.ca](https://storyfi.izzysoft.workers.dev/)** via Cloudflare Pages.
 
 ---
 
