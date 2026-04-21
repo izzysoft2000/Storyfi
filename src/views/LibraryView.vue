@@ -13,6 +13,8 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
+      <!-- Debug button — remove before release -->
+      <button class="debug-btn" @click="showDebug">🐛</button>
     </header>
 
     <!-- Project Grid -->
@@ -245,6 +247,49 @@ function checkInstallHint() {
 function dismissInstallHint() {
   showInstallHint.value = false
   localStorage.setItem(INSTALL_DISMISSED_KEY, '1')
+}
+
+// ─── Debug ───────────────────────────────────────────────────────────────────
+
+function showDebug() {
+  const app = document.getElementById('app')
+  const body = document.body
+  const html = document.documentElement
+
+  const info = [
+    `── Viewport ──`,
+    `window.innerWidth:   ${window.innerWidth}`,
+    `window.innerHeight:  ${window.innerHeight}`,
+    `screen.width:        ${screen.width}`,
+    `screen.height:       ${screen.height}`,
+    `devicePixelRatio:    ${devicePixelRatio}`,
+    ``,
+    `── dvh / svh ──`,
+    `100dvh (CSS):        (see element)`,
+    `visualViewport.h:    ${window.visualViewport?.height ?? 'n/a'}`,
+    `visualViewport.w:    ${window.visualViewport?.width ?? 'n/a'}`,
+    ``,
+    `── #app element ──`,
+    `app.offsetHeight:    ${app?.offsetHeight}`,
+    `app.clientHeight:    ${app?.clientHeight}`,
+    `app.scrollHeight:    ${app?.scrollHeight}`,
+    ``,
+    `── body / html ──`,
+    `body.offsetHeight:   ${body.offsetHeight}`,
+    `html.offsetHeight:   ${html.offsetHeight}`,
+    ``,
+    `── Safe Area (env) ──`,
+    `inset-top:    ${getComputedStyle(html).getPropertyValue('--sat') || 'use workaround'}`,
+    ``,
+    `── Display Mode ──`,
+    `standalone:   ${window.matchMedia('(display-mode: standalone)').matches}`,
+    `navigator.standalone: ${navigator.standalone ?? 'n/a'}`,
+    ``,
+    `── User Agent ──`,
+    `${navigator.userAgent.slice(0, 80)}`,
+  ].join('\n')
+
+  alert(info)
 }
 
 // ─── Create Project ──────────────────────────────────────────────────────────
@@ -721,6 +766,17 @@ function relativeDate(ts) {
   transform: scale(1.05);
   filter: brightness(1.1);
 }
+
+.debug-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.debug-btn:active { opacity: 1 }
 
 .app-title {
   font-family: var(--font-display);
