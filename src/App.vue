@@ -111,8 +111,7 @@ html, body {
 }
 
 #app {
-  position: fixed;
-  inset: 0;
+  height: 100%;
   background: var(--color-bg);
 }
 
