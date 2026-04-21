@@ -29,9 +29,7 @@
     <!-- Swipeable panel track: Cast (0) | Editor (1) | Playlist (2) -->
     <div
       class="m-panels"
-      @touchstart.passive="onTouchStart"
-      @touchmove="onTouchMove"
-      @touchend.passive="onTouchEnd"
+
     >
       <div class="m-panels__track" :style="trackStyle">
 
@@ -383,7 +381,7 @@ const { layout, movePanel, insertInNewColumn, setColumnWidth, resetLayout } = us
 const {
   isMobile, isPortrait,
   activePanel, setActivePanel,
-  trackStyle, onTouchStart, onTouchMove, onTouchEnd,
+  trackStyle,
 } = useMobileLayout()
 
 // ─── Refs ─────────────────────────────────────────────────────────────────────

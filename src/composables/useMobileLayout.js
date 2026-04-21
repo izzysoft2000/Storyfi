@@ -10,8 +10,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const MOBILE_BREAKPOINT = 768
 const LAST_PANEL_KEY    = 'storyfi_mobile_last_panel'
-const SWIPE_THRESHOLD   = 50
-const SWIPE_RESIST      = 0.35
 
 export function useMobileLayout() {
   // ─── Viewport ─────────────────────────────────────────────────────────────
@@ -45,67 +43,15 @@ export function useMobileLayout() {
     swipeDelta.value  = 0
   }
 
-  // ─── Swipe gesture ─────────────────────────────────────────────────────────
-  const swipeDelta   = ref(0)
-  const isSwiping    = ref(false)
-  let   _touchStartX = 0
-  let   _touchStartY = 0
-  let   _swipeLocked = false
-
-  function onTouchStart(e) {
-    _touchStartX    = e.touches[0].clientX
-    _touchStartY    = e.touches[0].clientY
-    _swipeLocked    = false
-    isSwiping.value = false
-  }
-
-  function onTouchMove(e) {
-    const dx = e.touches[0].clientX - _touchStartX
-    const dy = e.touches[0].clientY - _touchStartY
-
-    if (!_swipeLocked && !isSwiping.value) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
-      if (Math.abs(dy) > Math.abs(dx)) { _swipeLocked = true; return }
-      isSwiping.value = true
-    }
-
-    if (_swipeLocked) return
-    e.preventDefault()
-
-    const atStart = panelIndex.value === 0 && dx > 0
-    const atEnd   = panelIndex.value === PANELS.length - 1 && dx < 0
-    swipeDelta.value = (atStart || atEnd) ? dx * SWIPE_RESIST : dx
-  }
-
-  function onTouchEnd() {
-    if (!isSwiping.value) { swipeDelta.value = 0; return }
-
-    const delta = swipeDelta.value
-    if (delta < -SWIPE_THRESHOLD && panelIndex.value < PANELS.length - 1) {
-      setActivePanel(PANELS[panelIndex.value + 1])
-    } else if (delta > SWIPE_THRESHOLD && panelIndex.value > 0) {
-      setActivePanel(PANELS[panelIndex.value - 1])
-    } else {
-      swipeDelta.value = 0
-    }
-    isSwiping.value = false
-  }
-
-  // track width = 300vw (3 panels × 100vw)
-  const trackStyle = computed(() => {
-    const base       = -panelIndex.value * 100
-    const drag       = swipeDelta.value
-    const transition = isSwiping.value ? 'none' : 'transform 0.28s cubic-bezier(0.4,0,0.2,1)'
-    return {
-      transform:  `translateX(calc(${base}vw + ${drag}px))`,
-      transition,
-    }
-  })
+  // ─── Track style — driven by bottom tab only, no swipe ────────────────────
+  const trackStyle = computed(() => ({
+    transform:  `translateX(${-panelIndex.value * 100}vw)`,
+    transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
+  }))
 
   return {
     isMobile, isPortrait,
     activePanel, panelIndex, setActivePanel, PANELS,
-    swipeDelta, isSwiping, trackStyle,
-    onTouchStart, onTouchMove, onTouchEnd,
+    trackStyle,
   }
 }
