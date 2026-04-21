@@ -29,7 +29,9 @@
     <!-- Swipeable panel track: Cast (0) | Editor (1) | Playlist (2) -->
     <div
       class="m-panels"
-
+      @touchstart.passive="onTouchStart"
+      @touchmove="onTouchMove"
+      @touchend.passive="onTouchEnd"
     >
       <div class="m-panels__track" :style="trackStyle">
 
@@ -50,25 +52,56 @@
 
         <!-- ── Editor panel ── -->
         <div class="m-panel">
-          <div class="m-panel-toolbar">
+
+          <!-- Normal mode toolbar -->
+          <div v-if="!mobileSelection.hasSelection && !mobileSelection.selectionIsTagged" class="m-panel-toolbar">
             <button class="m-tool-btn" title="Import Markdown" @click="onImport">↑ Import</button>
             <div class="m-tool-divider" />
-            <button class="m-tool-btn" title="Bold (Ctrl+B)" @click="onBold"><b>B</b></button>
-            <button class="m-tool-btn" title="Italic (Ctrl+I)" @click="onItalic"><i>I</i></button>
+            <button class="m-tool-btn m-tool-btn--disabled" title="Select text to bold" @click="onBold"><b>B</b></button>
+            <button class="m-tool-btn m-tool-btn--disabled" title="Select text to italicise" @click="onItalic"><i>I</i></button>
             <div class="m-tool-divider" />
-            <button class="m-tool-btn" title="Segment Break" @click="onBreak">§</button>
+            <button class="m-tool-btn m-tool-btn--disabled" title="Select text first" @click="onBreak">§</button>
             <span class="m-tool-charcount">{{ charCount }}</span>
           </div>
+
+          <!-- Selection / tag mode toolbar -->
+          <div v-else class="m-panel-toolbar m-panel-toolbar--selection">
+
+            <!-- Cursor-in-tag only (no selection) -->
+            <template v-if="mobileSelection.selectionIsTagged && !mobileSelection.hasSelection">
+              <span class="m-tool-label">Tagged:</span>
+              <button class="m-tool-btn m-tool-btn--remove" @click="onRemoveTag">✕ Remove</button>
+            </template>
+
+            <!-- Text selected -->
+            <template v-else>
+              <button
+                v-for="role in store.cast"
+                :key="role.id"
+                class="m-role-chip"
+                :style="{ '--role-color': role.color, borderColor: role.color }"
+                @click="onMobileTagRole(role)"
+              >{{ role.label }}</button>
+              <div class="m-tool-divider" />
+              <button v-if="mobileSelection.selectionIsTagged" class="m-tool-btn m-tool-btn--remove" @click="onRemoveTag">✕</button>
+              <button class="m-tool-btn" title="Segment Break" @click="onBreak">§</button>
+              <button class="m-tool-btn m-tool-autotag" title="Auto-tag selection" @click="onAutoTagSelection">⚡</button>
+            </template>
+
+          </div>
+
           <div class="m-panel-body">
             <StoryEditor
               :ref="setEditorRef"
               :model-value="store.project?.editorState"
               :cast="store.cast"
               :char-limit="charLimit"
+              :show-bubble="false"
               @update:model-value="onEditorUpdate"
               @import-markdown="onMarkdownImported"
               @auto-tag-result="onAutoTagResult"
               @doc-updated="onDocUpdated"
+              @selection-change="onMobileSelectionChange"
             />
           </div>
         </div>
@@ -323,7 +356,7 @@
 
 <script setup>
 import {
-  ref, computed, watch, watchEffect, onMounted, onUnmounted, nextTick,
+  ref, computed, watch, watchEffect, reactive, onMounted, onUnmounted, nextTick,
 } from 'vue'
 
 // ─── Stores & composables ─────────────────────────────────────────────────────
@@ -381,7 +414,7 @@ const { layout, movePanel, insertInNewColumn, setColumnWidth, resetLayout } = us
 const {
   isMobile, isPortrait,
   activePanel, setActivePanel,
-  trackStyle,
+  trackStyle, onTouchStart, onTouchMove, onTouchEnd,
 } = useMobileLayout()
 
 // ─── Refs ─────────────────────────────────────────────────────────────────────
@@ -551,6 +584,23 @@ function onImport()  { editorRef.value?.triggerImport?.() }
 function onBold()    { editorRef.value?.getEditor?.()?.chain().focus().toggleBold().run() }
 function onItalic()  { editorRef.value?.getEditor?.()?.chain().focus().toggleItalic().run() }
 function onBreak()   { editorRef.value?.getEditor?.()?.chain().focus().insertSegmentBreak().run() }
+
+// ── Mobile selection toolbar ────────────────────────────────────────────
+const mobileSelection = reactive({ hasSelection: false, selectionIsTagged: false })
+
+function onMobileSelectionChange({ hasSelection, selectionIsTagged }) {
+  mobileSelection.hasSelection      = hasSelection
+  mobileSelection.selectionIsTagged = selectionIsTagged
+}
+function onMobileTagRole(role) {
+  editorRef.value?.applyVoiceTag?.(role)
+}
+function onRemoveTag() {
+  editorRef.value?.removeVoiceTag?.()
+}
+function onAutoTagSelection() {
+  editorRef.value?.autoTagSelection?.()
+}
 
 // Wire playback store whenever the editor mounts
 watch(editorRef, (ref) => {
@@ -1023,74 +1073,6 @@ function goLibrary() { emit('go-library') }
   padding: 2px 4px;
 }
 
-/* ─── Swipeable panel track ────────────────────────────────────────────────── */
-.m-panels {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-
-.m-panels__track {
-  display: flex;
-  width: 300vw;      /* 3 panels × 100vw — use vw not % to match transform */
-  height: 100%;
-  will-change: transform;
-}
-
-.m-panel {
-  width: 100vw;
-  height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-/* ─── Cast drawer ──────────────────────────────────────────────────────────── */
-
-/* ─── Bottom bar ───────────────────────────────────────────────────────────── */
-.m-bottom-bar {
-  display: flex;
-  align-items: center;
-  height: 56px;
-  padding: 0 4px;
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
-  flex-shrink: 0;
-  gap: 2px;
-}
-
-.m-safe-bottom { display: none; }
-
-
-.m-nav-icon { font-size: 16px; line-height: 1 }
-.m-nav-label {
-  font-family: var(--font-ui);
-  font-size: 9px;
-  color: var(--color-text-muted);
-  letter-spacing: 0.04em;
-}
-
-
-.m-tab {
-  all: unset;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 6px 20px;
-  border-radius: 10px;
-  min-width: 64px;
-  transition: background 0.15s;
-}
-.m-tab .m-nav-label { transition: color 0.15s }
-.m-tab.active .m-nav-label { color: var(--color-accent) }
-.m-tab.active { background: rgba(124,92,191,0.12) }
-.m-tab:active { background: rgba(255,255,255,0.05) }
-
-/* ─── Status dots ──────────────────────────────────────────────────────────── */
 /* ─── Panel toolbar (inside each swipeable panel) ─────────────────────────── */
 .m-panel-toolbar {
   display: flex;
@@ -1163,6 +1145,76 @@ function goLibrary() { emit('go-library') }
   flex-shrink: 0;
 }
 .m-status-globe--offline { filter: grayscale(1) brightness(0.5) sepia(1) hue-rotate(-30deg) saturate(3); }
+
+/* ─── Swipeable panel track ────────────────────────────────────────────────── */
+.m-panels {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.m-panels__track {
+  display: flex;
+  width: 300vw;      /* 3 panels × 100vw — use vw not % to match transform */
+  height: 100%;
+  will-change: transform;
+}
+
+.m-panel {
+  width: 100vw;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* ─── Cast drawer ──────────────────────────────────────────────────────────── */
+
+/* ─── Bottom bar ───────────────────────────────────────────────────────────── */
+.m-bottom-bar {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 4px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.m-safe-bottom { display: none; }
+
+
+.m-nav-icon { font-size: 16px; line-height: 1 }
+.m-nav-label {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+}
+
+
+.m-tab {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 20px;
+  border-radius: 10px;
+  min-width: 64px;
+  transition: background 0.15s;
+}
+.m-tab .m-nav-label { transition: color 0.15s }
+.m-tab.active .m-nav-label { color: var(--color-accent) }
+.m-tab.active { background: rgba(124,92,191,0.12) }
+.m-tab:active { background: rgba(255,255,255,0.05) }
+
+/* ─── Status dots ──────────────────────────────────────────────────────────── */
+
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.4 } }
 
 /* ─── Landscape adjustments ────────────────────────────────────────────────── */
@@ -1174,4 +1226,51 @@ function goLibrary() { emit('go-library') }
 .m-workspace--landscape .m-bottom-bar {
   height: 48px;
 }
+
+/* ─── Selection mode toolbar ──────────────────────────────────────────────── */
+.m-panel-toolbar--selection {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  gap: 5px;
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  border-bottom-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+.m-panel-toolbar--selection::-webkit-scrollbar { display: none; }
+
+.m-role-chip {
+  all: unset;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 4px 11px;
+  border-radius: 20px;
+  border: 1px solid var(--role-color, var(--color-border));
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--role-color, var(--color-text-muted));
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.m-role-chip:active { background: rgba(255,255,255,0.1); }
+
+.m-tool-btn--disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+.m-tool-btn--remove {
+  color: var(--color-error) !important;
+  flex-shrink: 0;
+}
+.m-tool-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.m-tool-autotag { flex-shrink: 0; }
+
 </style>

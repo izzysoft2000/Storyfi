@@ -1,8 +1,8 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-07 (session 3)
-> Current phase: v1.2 — Dockable Panel System complete
+> Last updated: 2026-04-21 (session 4)
+> Current phase: v1.3 — Mobile UI polish
 
 ---
 
@@ -606,10 +606,18 @@ Waveform canvas replaces the thin `player-track` progress div entirely. 52px tal
 | Bug #20 | waveformData getter not reactive (must depend on waveformVersion) | ✅ |
 | Bug #21 | New tag above existing groups missing from playlist until Generate | ✅ |
 | v1.2 | Waveform visualisation in AudioPlayerBar | ✅ |
+| v1.3 | Mobile panel toolbar CSS (m-panel-toolbar, m-tool-btn, etc.) | ✅ |
+| v1.3 | Offline globe indicator (🌐) replaces floating status dots | ✅ |
+| v1.3 | Swipe-between-panels removed — bottom tab nav only | ✅ |
+| v1.3 | Edge swipe prevention (CSS overscroll-behavior-x + JS edge guard) | ✅ |
+| v1.3 | Mobile editor toolbar hijack on text selection | ✅ |
+| v1.3 | BubbleMenu overflow dropdown (first 3 chips + +N ▾) | ✅ |
+| Bug #22 | swipeDelta referenced in setActivePanel after swipe removal | ✅ |
+| Bug #23 | Mobile toolbar CSS classes defined in template but never styled | ✅ |
+| Bug #24 | Edge touch guard blocked ← back button (now exempts interactive elements) | ✅ |
 | Backlog | Scene/Act/Chapter hierarchy | ⬜ |
 | Backlog | Auto-scroll teleprompter during playback | ⬜ |
 | Backlog | SRT/VTT subtitle export | ⬜ |
-| Backlog | Mobile UI — swipe between panels (landscape + portrait) | ⬜ |
 | Backlog | Cloudflare Worker — OAuth proxy + MiniMax API proxy | ⬜ |
 | Backlog | Google Drive integration (requires Worker for token exchange) | ⬜ |
 
@@ -703,3 +711,73 @@ Two entry points: ⚡ **Auto-tag from script** button in CastPanel (full doc), �
 
 ### Key Debug Finding
 Tested via debug button: `standalone (media): true`, `env(safe-area-bottom): 29px`, `innerH - view: 0px`. Layout was always correct — the perceived gap was the home indicator zone. Removed the filler since iPhone 12 mini PWA has no visible pill.
+
+---
+
+## v1.3 Mobile Polish (session 4 — 2026-04-21)
+
+### Files changed
+| File | What changed |
+|---|---|
+| `src/views/EditorView.vue` | Panel toolbar CSS, offline globe, selection-mode toolbar, swipe removal, edge guard |
+| `src/composables/useMobileLayout.js` | All swipe code removed, simplified trackStyle + setActivePanel |
+| `src/editor/StoryEditor.vue` | showBubble prop, selection-change emit, overflow dropdown, exposed tag actions |
+| `src/App.vue` | overscroll-behavior-x: none, onEdgeTouch guard, fixed duplicate onMounted |
+
+### Mobile toolbar — two-mode system
+Editor panel toolbar now has two modes driven by `mobileSelection` reactive state in EditorView:
+
+**Normal mode** (no selection, no cursor-in-tag):
+```
+↑ Import | B  I  §  (dimmed, pointer-events:none)  | charCount
+```
+
+**Selection mode** (text selected or cursor inside tag):
+- Toolbar gets subtle purple tint, `overflow-x: auto`, `flex-wrap: nowrap`
+- Scrollable row: all role chips → divider → ✕ (if tagged) → § → ⚡
+- Cursor-in-tag only (no selection): "TAGGED:" + "✕ Remove"
+
+Architecture:
+- `StoryEditor` emits `selection-change: { hasSelection, selectionIsTagged }` via `onSelectionUpdate` Tiptap callback
+- `EditorView` receives it via `@selection-change="onMobileSelectionChange"` → updates `mobileSelection` reactive object
+- `:show-bubble="false"` passed to StoryEditor on mobile — BubbleMenu suppressed entirely
+- `applyVoiceTag`, `autoTagSelection`, `removeVoiceTag`, `insertSegmentBreak` added to `defineExpose`
+
+### BubbleMenu overflow dropdown (desktop)
+- First 3 role chips always visible inline
+- 4+ roles → `+N ▾` toggle button opens absolute dropdown below bubble
+- `CHIP_LIMIT = 3` constant controls threshold
+- `chipDropdownOpen` closes automatically when bubble hides (shouldShowBubble returns false)
+- CSS: `.bubble-overflow`, `.bubble-overflow__toggle`, `.bubble-overflow__dropdown`
+
+### Edge swipe prevention (App.vue)
+```css
+html, body { overscroll-behavior-x: none; }  /* Android Chrome */
+```
+```javascript
+// iOS: block touchstart in outer 10% edges, but exempt interactive elements
+function onEdgeTouch(e) {
+  if (e.touches.length !== 1) return
+  if (e.target.closest('button, a, input, select, textarea, [role="button"]')) return
+  const x = e.touches[0].clientX
+  if (x < window.innerWidth * 0.1 || x > window.innerWidth * 0.9) e.preventDefault()
+}
+// Only registered on mobile, passive: false required for preventDefault
+```
+
+### Offline globe (EditorView.vue mobile top bar)
+- 🌐 only visible when `!isOnline` — hidden 99% of the time
+- Positioned just before the ⚙ gear button in the top bar
+- CSS: `filter: grayscale(1) brightness(0.5) sepia(1) hue-rotate(-30deg) saturate(3)` for red tint
+- Old `.m-status` floating dots div and all dot CSS removed
+
+### Persistent CSS problem — root cause & fix
+**Problem:** Every session patches EditorView.vue from the original zip. CSS added in session N is missing in session N+1 because the zip is never updated.
+**Fix:** Always update SNAPSHOT.md + export a new zip at end of session. Start next session with the new zip.
+
+### Google Drive backlog notes (discussed, not built)
+Planned additions when Worker is built:
+1. MD import from Drive (file picker → Worker fetch → `onMarkdownImported`)
+2. Project save/load as `.storyfi` JSON to Drive (solves iOS no-File-System-Access)
+3. Audio/ZIP export to Drive
+Build order: Cloudflare Worker → MD import → Project save/load → Audio export

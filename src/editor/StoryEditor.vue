@@ -3,7 +3,7 @@
 
     <!-- Bubble Menu — appears on text selection -->
     <BubbleMenu
-      v-if="editor"
+      v-if="editor && showBubble"
       :editor="editor"
       :tippy-options="{ duration: 120, placement: 'top-start', offset: [0, 8] }"
       :should-show="shouldShowBubble"
@@ -146,6 +146,7 @@ const props = defineProps({
   modelValue:   { type: [Object, String], default: null }, // saved editor JSON
   cast:         { type: Array,  default: () => [] },        // VoiceRole[]
   charLimit:    { type: Number, default: 250 },
+  showBubble:   { type: Boolean, default: true },           // hide on mobile — toolbar takes over
 })
 
 const emit = defineEmits([
@@ -153,6 +154,7 @@ const emit = defineEmits([
   'import-markdown',    // emitted with raw MD string after file import
   'auto-tag-result',    // emitted after selection auto-tag with { tagged, skipped, unmatched }
   'doc-updated',        // emitted with live ProseMirror doc on every Tiptap transaction
+  'selection-change',   // emitted on every selection update: { hasSelection, selectionIsTagged }
 ])
 
 // ─── Editor setup ─────────────────────────────────────────────────────────────
@@ -183,6 +185,14 @@ const editor = useEditor({
     // Signal EditorView to sync groups. Doc is read inside StoryEditor's
     // own closure via syncGroups — never passes through Vue's emit/proxy chain.
     emit('doc-updated')
+  },
+
+  onSelectionUpdate: ({ editor }) => {
+    const { from, to } = editor.state.selection
+    emit('selection-change', {
+      hasSelection:      from !== to,
+      selectionIsTagged: editor.isActive('voiceTag'),
+    })
   },
 
   editorProps: {
@@ -309,6 +319,16 @@ defineExpose({
   },
 
   getEditor: () => editor.value ?? null,
+
+  /** Tag actions — called by EditorView mobile toolbar */
+  applyVoiceTag,
+  autoTagSelection,
+  removeVoiceTag: () => {
+    editor.value?.chain().focus().extendMarkRange('voiceTag').unsetVoiceTag().run()
+  },
+  insertSegmentBreak: () => {
+    editor.value?.chain().focus().insertSegmentBreak().run()
+  },
 
   /** Get the raw ProseMirror doc for generation pipeline */
   getDoc: () => editor.value?.state.doc,
