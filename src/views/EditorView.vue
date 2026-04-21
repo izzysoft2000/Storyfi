@@ -100,25 +100,13 @@
         <span class="m-nav-label">Cast</span>
       </button>
 
-      <!-- Context actions — change based on active panel -->
+      <!-- Context actions — editor only (import, formatting) -->
       <div class="m-context-actions">
         <template v-if="activePanel === 'editor'">
           <button class="m-act-btn" title="Import Markdown" @click="onImport">↑</button>
           <button class="m-act-btn" title="Bold" @click="onBold"><b>B</b></button>
           <button class="m-act-btn" title="Italic" @click="onItalic"><i>I</i></button>
           <button class="m-act-btn" title="Segment Break" @click="onBreak">§</button>
-        </template>
-        <template v-else-if="activePanel === 'playlist'">
-          <button
-            class="m-act-btn m-act-btn--generate"
-            :disabled="gen.isGenerating || (!taggedSpans.length && !gen.groups.length) || !isOnline"
-            @click="onGenerate"
-          >▶ Generate</button>
-          <button
-            class="m-act-btn"
-            :disabled="!gen.groups.some(g => g.stitchStatus === 'ready')"
-            @click="onExport"
-          >↓ Export</button>
         </template>
       </div>
 
