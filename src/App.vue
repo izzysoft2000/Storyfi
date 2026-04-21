@@ -102,7 +102,7 @@ onUnmounted(() => {
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
 
 html, body {
-  height: 100%;
+  height: 100vh;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-ui);
@@ -111,7 +111,7 @@ html, body {
 }
 
 #app {
-  height: 100%;
+  height: 100vh;
   background: var(--color-bg);
 }
 
