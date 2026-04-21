@@ -252,41 +252,34 @@ function dismissInstallHint() {
 // ─── Debug ───────────────────────────────────────────────────────────────────
 
 function showDebug() {
-  const app = document.getElementById('app')
-  const body = document.body
-  const html = document.documentElement
+  const isStandaloneMedia  = window.matchMedia('(display-mode: standalone)').matches
+  const isStandaloneNav    = navigator.standalone ?? 'n/a'
+
+  // Measure a test element with safe-area height to see actual env() value
+  const probe = document.createElement('div')
+  probe.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,999px);width:1px;pointer-events:none;visibility:hidden'
+  document.body.appendChild(probe)
+  const safeBottom = probe.offsetHeight
+  document.body.removeChild(probe)
+
+  // Find .library or .m-workspace element height
+  const view = document.querySelector('.library') || document.querySelector('.m-workspace')
 
   const info = [
-    `── Viewport ──`,
-    `window.innerWidth:   ${window.innerWidth}`,
-    `window.innerHeight:  ${window.innerHeight}`,
-    `screen.width:        ${screen.width}`,
+    `standalone (media):  ${isStandaloneMedia}`,
+    `standalone (nav):    ${isStandaloneNav}`,
+    ``,
     `screen.height:       ${screen.height}`,
-    `devicePixelRatio:    ${devicePixelRatio}`,
-    ``,
-    `── dvh / svh ──`,
-    `100dvh (CSS):        (see element)`,
+    `window.innerHeight:  ${window.innerHeight}`,
     `visualViewport.h:    ${window.visualViewport?.height ?? 'n/a'}`,
-    `visualViewport.w:    ${window.visualViewport?.width ?? 'n/a'}`,
     ``,
-    `── #app element ──`,
-    `app.offsetHeight:    ${app?.offsetHeight}`,
-    `app.clientHeight:    ${app?.clientHeight}`,
-    `app.scrollHeight:    ${app?.scrollHeight}`,
+    `#app.offsetHeight:   ${document.getElementById('app')?.offsetHeight}`,
+    `view.offsetHeight:   ${view?.offsetHeight ?? 'n/a'}`,
+    `view.className:      ${view?.className?.split(' ')[0] ?? 'n/a'}`,
     ``,
-    `── body / html ──`,
-    `body.offsetHeight:   ${body.offsetHeight}`,
-    `html.offsetHeight:   ${html.offsetHeight}`,
-    ``,
-    `── Safe Area (env) ──`,
-    `inset-top:    ${getComputedStyle(html).getPropertyValue('--sat') || 'use workaround'}`,
-    ``,
-    `── Display Mode ──`,
-    `standalone:   ${window.matchMedia('(display-mode: standalone)').matches}`,
-    `navigator.standalone: ${navigator.standalone ?? 'n/a'}`,
-    ``,
-    `── User Agent ──`,
-    `${navigator.userAgent.slice(0, 80)}`,
+    `env(safe-area-bottom): ${safeBottom}px`,
+    `screen - innerH:     ${screen.height - window.innerHeight}px (status bar)`,
+    `innerH - view:       ${window.innerHeight - (view?.offsetHeight ?? 0)}px (gap?)`,
   ].join('\n')
 
   alert(info)
