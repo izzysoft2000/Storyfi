@@ -1168,20 +1168,7 @@ function goLibrary() { emit('go-library') }
   gap: 2px;
 }
 
-/* Safe area filler — ONLY in standalone PWA mode.
-   In Safari browser, env(safe-area-inset-bottom) = Safari chrome height (~83px),
-   which creates a huge gap. This filler is only needed when installed as a PWA. */
-.m-safe-bottom {
-  height: 0;
-  background: var(--color-surface);
-  flex-shrink: 0;
-}
-
-@media (display-mode: standalone) {
-  .m-safe-bottom {
-    height: env(safe-area-inset-bottom, 34px);
-  }
-}
+.m-safe-bottom { display: none; }
 
 .m-nav-btn {
   all: unset;

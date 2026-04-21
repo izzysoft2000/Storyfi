@@ -13,8 +13,6 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
-      <!-- Debug button — remove before release -->
-      <button class="debug-btn" @click="showDebug">🐛</button>
     </header>
 
     <!-- Project Grid -->
@@ -247,42 +245,6 @@ function checkInstallHint() {
 function dismissInstallHint() {
   showInstallHint.value = false
   localStorage.setItem(INSTALL_DISMISSED_KEY, '1')
-}
-
-// ─── Debug ───────────────────────────────────────────────────────────────────
-
-function showDebug() {
-  const isStandaloneMedia  = window.matchMedia('(display-mode: standalone)').matches
-  const isStandaloneNav    = navigator.standalone ?? 'n/a'
-
-  // Measure a test element with safe-area height to see actual env() value
-  const probe = document.createElement('div')
-  probe.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,999px);width:1px;pointer-events:none;visibility:hidden'
-  document.body.appendChild(probe)
-  const safeBottom = probe.offsetHeight
-  document.body.removeChild(probe)
-
-  // Find .library or .m-workspace element height
-  const view = document.querySelector('.library') || document.querySelector('.m-workspace')
-
-  const info = [
-    `standalone (media):  ${isStandaloneMedia}`,
-    `standalone (nav):    ${isStandaloneNav}`,
-    ``,
-    `screen.height:       ${screen.height}`,
-    `window.innerHeight:  ${window.innerHeight}`,
-    `visualViewport.h:    ${window.visualViewport?.height ?? 'n/a'}`,
-    ``,
-    `#app.offsetHeight:   ${document.getElementById('app')?.offsetHeight}`,
-    `view.offsetHeight:   ${view?.offsetHeight ?? 'n/a'}`,
-    `view.className:      ${view?.className?.split(' ')[0] ?? 'n/a'}`,
-    ``,
-    `env(safe-area-bottom): ${safeBottom}px`,
-    `screen - innerH:     ${screen.height - window.innerHeight}px (status bar)`,
-    `innerH - view:       ${window.innerHeight - (view?.offsetHeight ?? 0)}px (gap?)`,
-  ].join('\n')
-
-  alert(info)
 }
 
 // ─── Create Project ──────────────────────────────────────────────────────────
@@ -638,17 +600,7 @@ function relativeDate(ts) {
 }
 
 /* Safe area filler — ONLY in standalone PWA mode */
-.library__safe-bottom {
-  height: 0;
-  background: var(--color-bg);
-  flex-shrink: 0;
-}
-
-@media (display-mode: standalone) {
-  .library__safe-bottom {
-    height: env(safe-area-inset-bottom, 34px);
-  }
-}
+.library__safe-bottom { display: none; }
 
 @media (max-width: 600px) {
   .library__footer { padding: 12px 16px; }
@@ -760,16 +712,6 @@ function relativeDate(ts) {
   filter: brightness(1.1);
 }
 
-.debug-btn {
-  all: unset;
-  cursor: pointer;
-  font-size: 20px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  opacity: 0.5;
-  flex-shrink: 0;
-}
-.debug-btn:active { opacity: 1 }
 
 .app-title {
   font-family: var(--font-display);
