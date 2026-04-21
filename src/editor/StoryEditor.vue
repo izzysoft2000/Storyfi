@@ -219,16 +219,23 @@ watch(() => props.modelValue, val => {
 onBeforeUnmount(() => editor.value?.destroy())
 
 // ── Tag mode: suppress keyboard via inputmode="none" on the ProseMirror DOM ──
-watch(() => props.tagMode, (tagMode) => {
+function applyTagMode(tagMode, fromToggle = false) {
   const dom = editor.value?.view?.dom
   if (!dom) return
   if (tagMode) {
     dom.setAttribute('inputmode', 'none')
-    editor.value?.commands.blur()   // dismiss keyboard immediately
+    if (fromToggle) editor.value?.commands.blur() // only dismiss keyboard on active toggle
   } else {
     dom.removeAttribute('inputmode')
+    if (fromToggle) editor.value?.commands.focus() // only raise keyboard on active toggle
   }
-}, { immediate: true })
+}
+
+// Re-apply whenever the prop changes (user taps toggle)
+watch(() => props.tagMode, (val) => applyTagMode(val, true))
+
+// Apply initial tagMode once the editor DOM actually exists
+watch(editor, (ed) => { if (ed) applyTagMode(props.tagMode, false) })
 
 // ─── Character count ──────────────────────────────────────────────────────────
 const charCount = computed(() =>
