@@ -40,10 +40,9 @@ export function useMobileLayout() {
     if (!PANELS.includes(panel)) return
     activePanel.value = panel
     localStorage.setItem(LAST_PANEL_KEY, panel)
-    swipeDelta.value  = 0
   }
 
-  // ─── Track style — driven by bottom tab only, no swipe ────────────────────
+  // ─── Track style — tab navigation only, no swipe ──────────────────────────
   const trackStyle = computed(() => ({
     transform:  `translateX(${-panelIndex.value * 100}vw)`,
     transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',

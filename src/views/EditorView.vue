@@ -1102,7 +1102,6 @@ function goLibrary() { emit('go-library') }
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
-
 .m-panel-title {
   font-family: var(--font-ui);
   font-size: 10px;
@@ -1111,14 +1110,12 @@ function goLibrary() { emit('go-library') }
   color: var(--color-text-muted);
   text-transform: uppercase;
 }
-
 .m-panel-badge {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--color-text-muted);
   margin-left: 6px;
 }
-
 .m-tool-btn {
   all: unset;
   cursor: pointer;
@@ -1138,7 +1135,6 @@ function goLibrary() { emit('go-library') }
   background: rgba(124, 92, 191, 0.18);
   color: var(--color-text);
 }
-
 .m-tool-divider {
   width: 1px;
   height: 18px;
@@ -1146,7 +1142,6 @@ function goLibrary() { emit('go-library') }
   margin: 0 2px;
   flex-shrink: 0;
 }
-
 .m-tool-charcount {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1154,7 +1149,6 @@ function goLibrary() { emit('go-library') }
   margin-left: auto;
   padding-right: 2px;
 }
-
 .m-panel-body {
   flex: 1;
   overflow: hidden;

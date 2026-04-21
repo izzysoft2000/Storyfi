@@ -35,6 +35,7 @@ function handleUpdate() {
 // --- 2. PWA Install Logic ---
 const installEvent = ref(null)
 
+
 async function triggerInstall() {
   if (!installEvent.value) return
   installEvent.value.prompt()
@@ -67,6 +68,8 @@ function onHashChange() { parseHash() }
 // ── Edge swipe prevention (stops iOS back/forward gesture in standalone PWA) ─
 function onEdgeTouch(e) {
   if (e.touches.length !== 1) return
+  // Never block taps on buttons, links, or other interactive elements
+  if (e.target.closest('button, a, input, select, textarea, [role="button"]')) return
   const x = e.touches[0].clientX
   if (x < window.innerWidth * 0.1 || x > window.innerWidth * 0.9) {
     e.preventDefault()
@@ -76,7 +79,6 @@ function onEdgeTouch(e) {
 onMounted(() => {
   parseHash()
   window.addEventListener('hashchange', onHashChange)
-  // Mobile only — don't interfere with desktop mouse events
   if (window.matchMedia('(max-width: 768px)').matches) {
     window.addEventListener('touchstart', onEdgeTouch, { passive: false })
   }
