@@ -35,11 +35,6 @@ function handleUpdate() {
 // --- 2. PWA Install Logic ---
 const installEvent = ref(null)
 
-onMounted(() => {
-  parseHash()
-  window.addEventListener('hashchange', onHashChange)
-})
-
 async function triggerInstall() {
   if (!installEvent.value) return
   installEvent.value.prompt()
@@ -69,13 +64,27 @@ function navigateLibrary() {
 
 function onHashChange() { parseHash() }
 
+// ── Edge swipe prevention (stops iOS back/forward gesture in standalone PWA) ─
+function onEdgeTouch(e) {
+  if (e.touches.length !== 1) return
+  const x = e.touches[0].clientX
+  if (x < window.innerWidth * 0.1 || x > window.innerWidth * 0.9) {
+    e.preventDefault()
+  }
+}
+
 onMounted(() => {
   parseHash()
   window.addEventListener('hashchange', onHashChange)
+  // Mobile only — don't interfere with desktop mouse events
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    window.addEventListener('touchstart', onEdgeTouch, { passive: false })
+  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('hashchange', onHashChange)
+  window.removeEventListener('touchstart', onEdgeTouch)
 })
 </script>
 
@@ -108,6 +117,7 @@ html, body {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  overscroll-behavior-x: none;
 }
 
 #app {
