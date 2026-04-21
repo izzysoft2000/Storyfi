@@ -53,41 +53,38 @@
         <!-- ── Editor panel ── -->
         <div class="m-panel">
 
-          <!-- Normal mode toolbar -->
-          <div v-if="!mobileSelection.hasSelection && !mobileSelection.selectionIsTagged" class="m-panel-toolbar">
-            <button class="m-tool-btn" title="Import Markdown" @click="onImport">↑ Import</button>
+          <!-- ── Tag mode toolbar (default) — keyboard hidden, role chips always ready ── -->
+          <div v-if="mobileTagMode" class="m-panel-toolbar m-panel-toolbar--tagmode">
+            <button class="m-mode-toggle" @click="mobileTagMode = false">
+              <span class="m-mode-toggle__opt">✏</span>
+              <span class="m-mode-toggle__opt active">☝</span>
+            </button>
             <div class="m-tool-divider" />
-            <button class="m-tool-btn m-tool-btn--disabled" title="Select text to bold" @click="onBold"><b>B</b></button>
-            <button class="m-tool-btn m-tool-btn--disabled" title="Select text to italicise" @click="onItalic"><i>I</i></button>
-            <div class="m-tool-divider" />
-            <button class="m-tool-btn m-tool-btn--disabled" title="Select text first" @click="onBreak">§</button>
-            <span class="m-tool-charcount">{{ charCount }}</span>
+            <button
+              v-for="role in store.cast"
+              :key="role.id"
+              class="m-role-chip"
+              :style="{ '--role-color': role.color, borderColor: role.color }"
+              @click="onMobileTagRole(role)"
+            >{{ role.label }}</button>
+            <button v-if="mobileSelection.selectionIsTagged" class="m-tool-btn m-tool-btn--remove" @click="onRemoveTag">✕</button>
+            <button class="m-tool-btn" @click="onAutoTagSelection">⚡</button>
           </div>
 
-          <!-- Selection / tag mode toolbar -->
-          <div v-else class="m-panel-toolbar m-panel-toolbar--selection">
-
-            <!-- Cursor-in-tag only (no selection) -->
-            <template v-if="mobileSelection.selectionIsTagged && !mobileSelection.hasSelection">
-              <span class="m-tool-label">Tagged:</span>
-              <button class="m-tool-btn m-tool-btn--remove" @click="onRemoveTag">✕ Remove</button>
-            </template>
-
-            <!-- Text selected -->
-            <template v-else>
-              <button
-                v-for="role in store.cast"
-                :key="role.id"
-                class="m-role-chip"
-                :style="{ '--role-color': role.color, borderColor: role.color }"
-                @click="onMobileTagRole(role)"
-              >{{ role.label }}</button>
-              <div class="m-tool-divider" />
-              <button v-if="mobileSelection.selectionIsTagged" class="m-tool-btn m-tool-btn--remove" @click="onRemoveTag">✕</button>
-              <button class="m-tool-btn" title="Segment Break" @click="onBreak">§</button>
-              <button class="m-tool-btn m-tool-autotag" title="Auto-tag selection" @click="onAutoTagSelection">⚡</button>
-            </template>
-
+          <!-- ── Edit mode toolbar — normal keyboard, no role chips ── -->
+          <div v-else class="m-panel-toolbar">
+            <button class="m-mode-toggle" @click="mobileTagMode = true">
+              <span class="m-mode-toggle__opt active">✏</span>
+              <span class="m-mode-toggle__opt">☝</span>
+            </button>
+            <div class="m-tool-divider" />
+            <button class="m-tool-btn" title="Import Markdown" @click="onImport">↑ Import</button>
+            <div class="m-tool-divider" />
+            <button class="m-tool-btn" :class="{ 'm-tool-btn--disabled': !mobileSelection.hasSelection }" @click="onBold"><b>B</b></button>
+            <button class="m-tool-btn" :class="{ 'm-tool-btn--disabled': !mobileSelection.hasSelection }" @click="onItalic"><i>I</i></button>
+            <div class="m-tool-divider" />
+            <button class="m-tool-btn" :class="{ 'm-tool-btn--disabled': !mobileSelection.hasSelection }" @click="onBreak">§</button>
+            <span class="m-tool-charcount">{{ charCount }}</span>
           </div>
 
           <div class="m-panel-body">
@@ -97,6 +94,7 @@
               :cast="store.cast"
               :char-limit="charLimit"
               :show-bubble="false"
+              :tag-mode="mobileTagMode"
               @update:model-value="onEditorUpdate"
               @import-markdown="onMarkdownImported"
               @auto-tag-result="onAutoTagResult"
@@ -585,7 +583,10 @@ function onBold()    { editorRef.value?.getEditor?.()?.chain().focus().toggleBol
 function onItalic()  { editorRef.value?.getEditor?.()?.chain().focus().toggleItalic().run() }
 function onBreak()   { editorRef.value?.getEditor?.()?.chain().focus().insertSegmentBreak().run() }
 
-// ── Mobile selection toolbar ────────────────────────────────────────────
+// ── Mobile toolbar mode + selection state ──────────────────────────────
+// true = Tag mode (keyboard suppressed, role chips always visible)
+// false = Edit mode (normal keyboard, toolbar reacts to selection)
+const mobileTagMode   = ref(true)   // Tag mode on by default — keyboard hidden until user switches
 const mobileSelection = reactive({ hasSelection: false, selectionIsTagged: false })
 
 function onMobileSelectionChange({ hasSelection, selectionIsTagged }) {
@@ -1227,17 +1228,51 @@ function goLibrary() { emit('go-library') }
   height: 48px;
 }
 
-/* ─── Selection mode toolbar ──────────────────────────────────────────────── */
-.m-panel-toolbar--selection {
+/* ─── Edit / Tag mode toggle pill ────────────────────────────────────────── */
+.m-mode-toggle {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 2px 3px;
+  gap: 2px;
+}
+.m-mode-toggle__opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border-radius: 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.m-mode-toggle__opt.active {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* ─── Tag mode toolbar ───────────────────────────────────────────────────── */
+.m-panel-toolbar--tagmode {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   flex-wrap: nowrap;
   gap: 5px;
-  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
-  border-bottom-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  border-bottom-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
-.m-panel-toolbar--selection::-webkit-scrollbar { display: none; }
+.m-panel-toolbar--tagmode::-webkit-scrollbar { display: none; }
+.m-panel-toolbar--tagmode .m-mode-toggle { margin-left: 0; flex-shrink: 0; }
+
+
 
 .m-role-chip {
   all: unset;

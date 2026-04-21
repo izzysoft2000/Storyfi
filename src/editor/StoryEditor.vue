@@ -147,6 +147,7 @@ const props = defineProps({
   cast:         { type: Array,  default: () => [] },        // VoiceRole[]
   charLimit:    { type: Number, default: 250 },
   showBubble:   { type: Boolean, default: true },           // hide on mobile — toolbar takes over
+  tagMode:      { type: Boolean, default: false },            // mobile: suppress keyboard, keep selection
 })
 
 const emit = defineEmits([
@@ -216,6 +217,18 @@ watch(() => props.modelValue, val => {
 }, { deep: true })
 
 onBeforeUnmount(() => editor.value?.destroy())
+
+// ── Tag mode: suppress keyboard via inputmode="none" on the ProseMirror DOM ──
+watch(() => props.tagMode, (tagMode) => {
+  const dom = editor.value?.view?.dom
+  if (!dom) return
+  if (tagMode) {
+    dom.setAttribute('inputmode', 'none')
+    editor.value?.commands.blur()   // dismiss keyboard immediately
+  } else {
+    dom.removeAttribute('inputmode')
+  }
+}, { immediate: true })
 
 // ─── Character count ──────────────────────────────────────────────────────────
 const charCount = computed(() =>
