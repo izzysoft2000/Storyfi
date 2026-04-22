@@ -3,6 +3,9 @@
 
     <!-- Toolbar: Generate + Export only (label + Settings moved to workspace) -->
     <div class="playlist-toolbar">
+      <span v-if="gen.groups.length > 0" class="playlist-count">
+        {{ gen.groups.length }} segment{{ gen.groups.length !== 1 ? 's' : '' }}
+      </span>
       <div class="toolbar-right">
         <button
           class="tb-btn tb-btn--primary"
@@ -212,8 +215,13 @@ function fmt(ms) { return formatDuration(ms) }
 }
 
 .playlist-toolbar {
-  display: flex; align-items: center; justify-content: flex-end;
+  display: flex; align-items: center; justify-content: space-between;
   padding: 8px 10px; border-bottom: 1px solid var(--color-border); flex-shrink: 0;
+}
+
+.playlist-count {
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--color-text-muted); opacity: 0.7;
 }
 
 .toolbar-right { display: flex; gap: 5px }

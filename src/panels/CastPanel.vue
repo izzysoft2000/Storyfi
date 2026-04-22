@@ -202,9 +202,8 @@
     </button>
 
     <button
-      v-if="roles.length > 0"
       class="autotag-btn"
-      title="Scan script for [LABEL] patterns and tag matching spans"
+      title="Scan script for [LABEL] patterns and tag matching spans — creates missing cast members automatically"
       @click="$emit('auto-tag')"
     >
       ⚡ Auto-tag from script

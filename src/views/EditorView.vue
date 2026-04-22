@@ -71,7 +71,9 @@
               v-for="role in store.cast"
               :key="role.id"
               class="m-role-chip"
-              :style="{ '--role-color': role.color, borderColor: role.color }"
+              :class="{ 'm-role-chip--active': role.id === mobileSelection.activeRoleId }"
+              :style="{ '--role-color': role.color, borderColor: role.color,
+                background: role.id === mobileSelection.activeRoleId ? role.color : 'transparent' }"
               @click="onMobileTagRole(role)"
             >{{ role.label }}</button>
             <button class="m-tool-btn" @click="onAutoTagSelection">⚡</button>
@@ -588,14 +590,15 @@ function onItalic()  { editorRef.value?.getEditor?.()?.chain().focus().toggleIta
 function onBreak()   { editorRef.value?.getEditor?.()?.chain().focus().insertSegmentBreak().run() }
 
 // ── Mobile toolbar state ──────────────────────────────────────────────────────
-const mobileTagMode   = ref(true)
-const mobileSelection = reactive({ hasSelection: false, selectionIsTagged: false })
+const mobileTagMode   = ref(false)
+const mobileSelection = reactive({ hasSelection: false, selectionIsTagged: false, activeRoleId: null })
 const isPlaybackActive = computed(() => playback.isPlaying || playback.isPaused)
 watch(isPlaybackActive, (active) => { if (active) mobileTagMode.value = true })
 
-function onMobileSelectionChange({ hasSelection, selectionIsTagged }) {
+function onMobileSelectionChange({ hasSelection, selectionIsTagged, activeRoleId }) {
   mobileSelection.hasSelection      = hasSelection
   mobileSelection.selectionIsTagged = selectionIsTagged
+  mobileSelection.activeRoleId      = activeRoleId ?? null
 }
 function onMobileTagRole(role)    { editorRef.value?.applyVoiceTag?.(role) }
 function onRemoveTag()            { editorRef.value?.removeVoiceTag?.() }
@@ -725,9 +728,9 @@ function onRoleDeleted() {
  *   setTextSelection → setVoiceTag → onUpdate fires → editorState saved →
  *   taggedSpans recomputes → watch fires → buildGroupsFromDoc → playlist updates.
  */
-function applyAutoTagQueue(result) {
+function applyAutoTagQueue(result, source = 'doc') {
   const { operations, found, unmatched } = result
-  showAutoTagToast({ tagged: operations.length, found, unmatched })
+  showAutoTagToast({ tagged: operations.length, found, unmatched, source })
 
   // Delegate to StoryEditor — it captures editor.value at call time so the
   // correct instance is used even if editorRef changes during the setTimeout chain
@@ -740,20 +743,59 @@ function applyAutoTagQueue(result) {
 
 function onAutoTag() {
   if (!editorRef.value) return
-  const result = editorRef.value.applyAutoTag(store.cast)
+
+  // When cast is empty, buildAutoTagOperations bails early (roles.length === 0).
+  // Instead, do a raw label-discovery scan on the doc text to find [LABEL] patterns,
+  // create roles for them, then run the full tag pass with the populated cast.
+  if (store.cast.length === 0) {
+    const doc = editorRef.value.getDoc?.()
+    if (!doc) return
+    const LABEL_RE = /\[([^\]]+)\]/g
+    const labels = new Set()
+    doc.descendants(node => {
+      if (!node.isText) return
+      for (const m of node.text.matchAll(LABEL_RE)) labels.add(m[1].trim())
+    })
+    if (labels.size === 0) {
+      toastRef.value?.show('No [LABEL] patterns found in script.', 'warning', 3500)
+      return
+    }
+    for (const label of labels) store.addRole(label)
+    toastRef.value?.show(
+      `Added ${labels.size} cast member${labels.size !== 1 ? 's' : ''} from script.`,
+      'success', 3500
+    )
+  }
+
+  // Standard pass — create roles for any remaining unmatched labels
+  const firstPass = editorRef.value.applyAutoTag(store.cast)
+  let newRolesAdded = 0
+  for (const label of firstPass.unmatched) {
+    const clean = label.replace(/^\[|\]$/g, '').trim()
+    const alreadyExists = store.cast.some(r => r.label.trim().toLowerCase() === clean.toLowerCase())
+    if (!alreadyExists) { store.addRole(clean); newRolesAdded++ }
+  }
+  const result = newRolesAdded > 0 ? editorRef.value.applyAutoTag(store.cast) : firstPass
+  if (newRolesAdded > 0) {
+    toastRef.value?.show(
+      `Added ${newRolesAdded} new cast member${newRolesAdded !== 1 ? 's' : ''} from script.`,
+      'success', 3500
+    )
+  }
   applyAutoTagQueue(result)
 }
 
 function onAutoTagResult(result) {
-  applyAutoTagQueue(result)
+  applyAutoTagQueue(result, 'selection')
 }
 
-function showAutoTagToast({ tagged, found, unmatched }) {
+function showAutoTagToast({ tagged, found, unmatched, source = 'doc' }) {
   if (tagged === 0 && unmatched.length === 0) {
     if (found > 0) {
       toastRef.value?.show('Already tagged — no new spans to apply.', 'success', 3000)
     } else {
-      toastRef.value?.show('No [LABEL] patterns found in selection.', 'warning', 3500)
+      const msg = source === 'selection' ? 'No [LABEL] patterns found in selection.' : 'No [LABEL] patterns found in script.'
+      toastRef.value?.show(msg, 'warning', 3500)
     }
     return
   }
@@ -1125,7 +1167,8 @@ function goLibrary() { emit('go-library') }
   font-family: var(--font-ui); color: var(--role-color, var(--color-text-muted));
   white-space: nowrap; transition: background 0.12s;
 }
-.m-role-chip:active { background: rgba(255,255,255,0.1); }
+.m-role-chip:active  { background: rgba(255,255,255,0.1); }
+.m-role-chip--active { color: #fff !important; }
 
 /* ─── Offline globe ────────────────────────────────────────────────────────── */
 .m-status-globe           { font-size: 16px; line-height: 1; flex-shrink: 0; }

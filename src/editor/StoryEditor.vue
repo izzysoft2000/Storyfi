@@ -188,9 +188,11 @@ const editor = useEditor({
 
   onSelectionUpdate: ({ editor }) => {
     const { from, to } = editor.state.selection
+    const isTagged = editor.isActive('voiceTag')
     emit('selection-change', {
       hasSelection:      from !== to,
-      selectionIsTagged: editor.isActive('voiceTag'),
+      selectionIsTagged: isTagged,
+      activeRoleId:      isTagged ? (editor.getAttributes('voiceTag').roleId ?? null) : null,
     })
   },
 

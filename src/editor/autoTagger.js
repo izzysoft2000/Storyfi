@@ -1,17 +1,21 @@
 /**
  * editor/autoTagger.js
  *
- * Scans the editor document for [LABEL] prefixes and returns a list of
- * tagging operations. The caller applies them one-by-one through the
- * normal Tiptap path so each fires onUpdate → editorState save → playlist sync.
+ * Scans the editor document for [LABEL] prefixes and tags text according to
+ * the "section ownership" model:
+ *
+ *   [NARRATOR] Everything here belongs to Narrator...
+ *   Even across multiple paragraphs...
+ *   ...until the next label appears.
+ *   [JOSEPH] Now everything belongs to Joseph.
  *
  * Rules:
- *  - Only tags text with NO existing voiceTag mark (merge mode)
- *  - Leaves the [LABEL] text itself untagged
- *  - Matching is case-insensitive
+ *  - pendingRole carries across paragraph/block boundaries
+ *  - pendingRole only changes when a new [LABEL] is found
+ *  - Text before the very first [LABEL] is left untagged
+ *  - Italic text (stage directions) is skipped — not tagged, pendingRole still carries
+ *  - Text that already has a voiceTag mark is skipped (merge mode)
  *  - Reports unmatched labels
- *  - Handles split-node structure: [LABEL] node (possibly code/italic marked)
- *    followed by speech text in the next sibling node
  */
 
 const LABEL_RE = /\[([^\]]+)\]/g
@@ -40,17 +44,13 @@ export function buildAutoTagOperations(editor, roles, options) {
   let   found      = 0
   const unmatched  = new Set()
 
-  // pendingRole: set when a [LABEL] node has no taggable text after it.
-  // The NEXT untagged text node (e.g. the speech text that follows) gets tagged.
-  // This handles: [NARRATOR](code mark) | "They say..." — two separate nodes.
+  // pendingRole persists across paragraph boundaries.
+  // Everything from a [LABEL] until the next [LABEL] belongs to that role.
   let pendingRole = null
 
   doc.descendants((node, pos) => {
-    // Non-inline block boundary — reset pending role
-    if (!node.isText) {
-      if (!node.isInline) pendingRole = null
-      return
-    }
+    // Skip non-text nodes — but DON'T reset pendingRole (it carries across paragraphs)
+    if (!node.isText) return
 
     if (pos + node.nodeSize <= rangeFrom || pos >= rangeTo) return
 
@@ -58,56 +58,75 @@ export function buildAutoTagOperations(editor, roles, options) {
     if (!text) return
 
     const hasVoiceTag = node.marks.some(m => m.type.name === 'voiceTag')
-
-    if (hasVoiceTag) {
-      // Already tagged — cancel any pending role, count for "found" if label is inside
-      pendingRole = null
-      if ([...text.matchAll(LABEL_RE)].length > 0) found++
-      return
-    }
-
-    // Apply a pending role from a previous label-only node
-    if (pendingRole) {
-      const trimStart = text.search(/\S/)
-      const trimEnd   = text.trimEnd().length
-      if (trimStart >= 0 && trimStart < trimEnd) {
-        operations.push({ from: pos + trimStart, to: pos + trimEnd, role: pendingRole })
-      }
-      pendingRole = null
-      // Fall through — this node might itself contain [LABEL] patterns
-    }
+    const isItalic    = node.marks.some(m => m.type.name === 'italic')
 
     LABEL_RE.lastIndex = 0
     const matches = [...text.matchAll(LABEL_RE)]
-    if (matches.length === 0) return
+
+    if (hasVoiceTag) {
+      // Already tagged — update pendingRole if there's a new label here
+      if (matches.length > 0) {
+        found++
+        const lastMatch = matches[matches.length - 1]
+        const lastRole  = roleMap.get(lastMatch[1].trim().toLowerCase())
+        if (lastRole) pendingRole = lastRole
+      }
+      return
+    }
+
+    // Stage directions (italic) — don't tag, but let pendingRole carry through
+    if (isItalic) return
+
+    if (matches.length === 0) {
+      // No label — tag entire node with current pendingRole (if any)
+      if (pendingRole) {
+        const trimStart = text.search(/\S/)
+        const trimEnd   = text.trimEnd().length
+        if (trimStart >= 0 && trimStart < trimEnd) {
+          operations.push({ from: pos + trimStart, to: pos + trimEnd, role: pendingRole })
+        }
+      }
+      return
+    }
+
     found++
 
+    // Tag text BEFORE the first label with the current pendingRole
+    if (pendingRole && matches[0].index > 0) {
+      const before     = text.slice(0, matches[0].index)
+      const trimStart  = before.search(/\S/)
+      const trimEnd    = before.trimEnd().length
+      if (trimStart >= 0 && trimStart < trimEnd) {
+        operations.push({ from: pos + trimStart, to: pos + trimEnd, role: pendingRole })
+      }
+    }
+
+    // Process each [LABEL] in this node
     for (let i = 0; i < matches.length; i++) {
       const match    = matches[i]
       const labelRaw = match[1]
       const role     = roleMap.get(labelRaw.trim().toLowerCase())
 
-      if (!role) { unmatched.add(`[${labelRaw}]`); continue }
+      if (!role) {
+        unmatched.add(`[${labelRaw}]`)
+        // Keep pendingRole unchanged — unmatched labels don't interrupt flow
+        continue
+      }
+
+      // Update pendingRole to this new label
+      pendingRole = role
 
       const tagStart = match.index + match[0].length
       const tagEnd   = i + 1 < matches.length ? matches[i + 1].index : text.length
-
-      // Check if there's any non-whitespace text after the label in this node
-      const spanText  = tagStart < tagEnd ? text.slice(tagStart, tagEnd) : ''
+      const spanText = text.slice(tagStart, tagEnd)
       const trimStart = spanText.search(/\S/)
 
-      if (tagStart >= tagEnd || trimStart < 0) {
-        // Label fills this node — set pending role for the next sibling text node
-        pendingRole = role
-        continue
-      }
+      if (trimStart < 0) continue // no text after label in this node — pendingRole carries over
 
       const trimEnd = spanText.trimEnd().length
       const from    = pos + tagStart + trimStart
       const to      = pos + tagStart + trimEnd
-      if (from >= to) continue
-
-      operations.push({ from, to, role })
+      if (from < to) operations.push({ from, to, role })
     }
   })
 
