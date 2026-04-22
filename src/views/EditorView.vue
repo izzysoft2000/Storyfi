@@ -122,6 +122,7 @@
             @regenerate-group="onRegenerateGroup"
             @open-settings="settingsRef?.open()"
             @export="onExport"
+            @focus-sentence="onFocusSentence"
           />
         </div>
 
@@ -283,6 +284,7 @@
                 @regenerate-group="onRegenerateGroup"
                 @open-settings="settingsRef?.open()"
                 @export="onExport"
+                @focus-sentence="onFocusSentence"
               />
               <StoryEditor
                 v-else-if="panelId === 'editor'"
@@ -603,6 +605,20 @@ function onMobileSelectionChange({ hasSelection, selectionIsTagged, activeRoleId
 function onMobileTagRole(role)    { editorRef.value?.applyVoiceTag?.(role) }
 function onRemoveTag()            { editorRef.value?.removeVoiceTag?.() }
 function onAutoTagSelection()     { editorRef.value?.autoTagSelection?.() }
+
+// ── Focus sentence from playlist subentry click ───────────────────────────────
+async function onFocusSentence({ from, to }) {
+  // On mobile: switch to editor panel first, then position cursor
+  if (isMobile.value && activePanel.value !== 'editor') {
+    setActivePanel('editor')
+    await nextTick()
+  }
+  // Highlight the span (playback-style decoration) so it's visually obvious
+  editorRef.value?.highlightSentence(from, to)
+  // Place cursor at END of span — BubbleMenu shows when cursor is inside a voiceTag,
+  // and positioning at end is more reliable than start for mark detection
+  editorRef.value?.placeCursor(to)
+}
 function onSwitchToEditMode() {
   mobileTagMode.value = false
   editorRef.value?.focusEditor?.()

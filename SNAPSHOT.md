@@ -1,8 +1,8 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-21 (session 5)
-> Current phase: v1.3 — Mobile UI polish
+> Last updated: 2026-04-22 (session 6)
+> Current phase: v1.4 — Auto-tag & Splitter improvements
 
 ---
 
@@ -623,6 +623,19 @@ Waveform canvas replaces the thin `player-track` progress div entirely. 52px tal
 | Bug #26 | tagMode watcher fires before editor DOM exists (split into two watchers) | ✅ |
 | Bug #27 | _moveCount not defined — dead variable in column resize onMove | ✅ |
 | Bug #28 | BubbleMenu overflow CSS parse error (.bubble-divider selector eaten) | ✅ |
+| v1.4 | Edit mode as default on mobile (was Tag mode) | ✅ |
+| v1.4 | Auto-tag: create missing cast members from unmatched [LABEL]s | ✅ |
+| v1.4 | Auto-tag: empty cast raw-scan path (buildAutoTagOperations bails on empty roles) | ✅ |
+| v1.4 | Auto-tag: section-ownership model — pendingRole carries across paragraphs | ✅ |
+| v1.4 | Auto-tag: italic text (stage directions) skipped, pendingRole carries through | ✅ |
+| v1.4 | Auto-tag button always visible in CastPanel (removed v-if="roles.length > 0") | ✅ |
+| v1.4 | Auto-tag toast: "in script" vs "in selection" context-aware message | ✅ |
+| v1.4 | Mobile toolbar: ✕ Remove tag pinned before role chips | ✅ |
+| v1.4 | Mobile toolbar: active role chip highlighted when cursor inside tagged text | ✅ |
+| v1.4 | Playlist: segment count in toolbar header | ✅ |
+| v1.4 | splitter.js: merge same-role spans across paragraph boundaries (+space) | ✅ |
+| Bug #29 | Auto-tag empty cast: buildAutoTagOperations early-return on roles.length=0 | ✅ |
+| Bug #30 | Desktop/mobile segment count mismatch — paragraph boundary gap of 2 in extractTaggedSpans | ✅ |
 | Backlog | Scene/Act/Chapter hierarchy | ⬜ |
 | Backlog | Auto-scroll teleprompter during playback | ⬜ |
 | Backlog | SRT/VTT subtitle export | ⬜ |
@@ -817,3 +830,91 @@ Planned sequence when Worker is ready:
 1. Attach updated `SNAPSHOT.md` + a zip containing all patched files
 2. Key files to include in zip: `EditorView.vue`, `StoryEditor.vue`, `useMobileLayout.js`, `App.vue`, `SettingsModal.vue`
 3. Say what you want to work on — Claude reads SNAPSHOT first
+
+---
+
+## v1.4 Auto-tag & Splitter Improvements (session 6 — 2026-04-22)
+
+### Files changed
+| File | What changed |
+|---|---|
+| `src/views/EditorView.vue` | Edit mode default, ✕ before chips, activeRoleId chip highlight, enhanced onAutoTag, context-aware toasts, playback lock |
+| `src/editor/autoTagger.js` | Section-ownership model (pendingRole persists across paragraphs), italic skip |
+| `src/editor/splitter.js` | extractTaggedSpans merges same-role spans across paragraph boundaries |
+| `src/editor/StoryEditor.vue` | activeRoleId emitted in selection-change, onSelectionUpdate |
+| `src/panels/CastPanel.vue` | Auto-tag always visible (v-if removed), Auto-tag button creates missing cast |
+| `src/panels/PlaylistPane.vue` | Segment count in playlist toolbar |
+
+---
+
+### Auto-tag Overhaul
+
+**Section-ownership model (autoTagger.js):**
+Old: `pendingRole` reset at every paragraph boundary → only text on same line as [LABEL] got tagged.
+New: `pendingRole` persists across block boundaries. Everything from `[Label1]` to `[Label2]` is tagged as Label1.
+
+```javascript
+// OLD — resets at every paragraph
+if (!node.isText) {
+  if (!node.isInline) pendingRole = null  // ← was here
+  return
+}
+// NEW — just skip, don't reset
+if (!node.isText) return
+```
+
+**Italic skip (stage directions):**
+```javascript
+const isItalic = node.marks.some(m => m.type.name === 'italic')
+if (isItalic) return  // don't tag, pendingRole still carries through
+```
+
+**Empty cast path:**
+`buildAutoTagOperations` early-returns when `roles.length === 0`. When cast is empty, `onAutoTag` now does a raw `doc.descendants` regex scan to discover labels, creates roles via `store.addRole(label)`, then runs the standard tag pass.
+
+---
+
+### splitter.js — Paragraph Boundary Merge (Bug #30)
+
+**Problem:** `extractTaggedSpans` only merged spans where `current.to === pos` exactly. A ProseMirror paragraph boundary adds 2 positions (close + open tag), so same-role text in adjacent paragraphs became two separate spans. This caused desktop/mobile segment count to differ by 1 (platform-specific paragraph structure from MD import).
+
+**Fix:**
+```javascript
+const contiguous   = current?.to === pos
+const paraAdjacent = current?.to + 2 === pos
+
+if (current && current.roleId === roleId && (contiguous || paraAdjacent)) {
+  current.text += (paraAdjacent ? ' ' : '') + node.text  // space for para boundary
+  current.to    = pos + node.nodeSize
+}
+```
+
+---
+
+### Mobile Toolbar — Active Role Chip
+
+When cursor is inside tagged text, the matching role chip shows as filled (role colour background, white text). Driven by `activeRoleId` emitted from `onSelectionUpdate` in StoryEditor:
+
+```javascript
+onSelectionUpdate: ({ editor }) => {
+  const isTagged = editor.isActive('voiceTag')
+  emit('selection-change', {
+    hasSelection:      from !== to,
+    selectionIsTagged: isTagged,
+    activeRoleId:      isTagged ? (editor.getAttributes('voiceTag').roleId ?? null) : null,
+  })
+}
+```
+
+---
+
+### Files needed in next session zip
+- `src/views/EditorView.vue`
+- `src/editor/StoryEditor.vue`
+- `src/editor/autoTagger.js`
+- `src/editor/splitter.js`
+- `src/panels/CastPanel.vue`
+- `src/panels/PlaylistPane.vue`
+- `src/modals/SettingsModal.vue`
+- `src/composables/useMobileLayout.js`
+- `src/App.vue`

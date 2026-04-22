@@ -361,6 +361,11 @@ defineExpose({
   /** Focus raw ProseMirror DOM — must be called synchronously within a user gesture on iOS */
   focusEditor: () => editor.value?.view?.dom?.focus(),
 
+  /** Place cursor at pos without selecting — triggers selectionIsTagged on mobile toolbar */
+  placeCursor: (pos) => {
+    editor.value?.chain().focus().setTextSelection(pos).run()
+  },
+
   /** Tag actions — called by EditorView mobile toolbar */
   applyVoiceTag,
   autoTagSelection,

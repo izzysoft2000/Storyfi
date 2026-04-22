@@ -120,7 +120,9 @@
               <div
                 v-for="s in (group.sentences ?? [])"
                 :key="s.id"
-                class="sentence-row"
+                class="sentence-row sentence-row--clickable"
+                :title="'Click to locate in editor'"
+                @click="$emit('focus-sentence', { from: s.editorFrom, to: s.editorTo })"
               >
                 <span class="sentence-row__idx">{{ s.sentenceIndex + 1 }}</span>
                 <span class="sentence-row__text">{{ truncate(s.text, 50) }}</span>
@@ -158,7 +160,7 @@ const props = defineProps({
   isOnline:       { type: Boolean, default: true },
 })
 
-defineEmits(['generate', 'regenerate-group', 'export'])
+defineEmits(['generate', 'regenerate-group', 'export', 'focus-sentence'])
 
 const gen      = useGenerationStore()
 const playback = usePlaybackStore()
@@ -371,7 +373,8 @@ function fmt(ms) { return formatDuration(ms) }
   display: grid; grid-template-columns: 18px 1fr auto auto;
   align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px;
 }
-.sentence-row:hover { background: rgba(255,255,255,0.03) }
+.sentence-row--clickable { cursor: pointer; }
+.sentence-row--clickable:hover { background: rgba(124,92,191,0.12); }.sentence-row--clickable:hover { background: rgba(124,92,191,0.12); }
 .sentence-row__idx {
   font-size: 10px; font-family: var(--font-mono);
   color: var(--color-text-muted); opacity: 0.5; text-align: right;
