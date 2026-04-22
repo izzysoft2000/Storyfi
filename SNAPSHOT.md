@@ -1,7 +1,7 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-21 (session 4)
+> Last updated: 2026-04-21 (session 5)
 > Current phase: v1.3 — Mobile UI polish
 
 ---
@@ -607,17 +607,26 @@ Waveform canvas replaces the thin `player-track` progress div entirely. 52px tal
 | Bug #21 | New tag above existing groups missing from playlist until Generate | ✅ |
 | v1.2 | Waveform visualisation in AudioPlayerBar | ✅ |
 | v1.3 | Mobile panel toolbar CSS (m-panel-toolbar, m-tool-btn, etc.) | ✅ |
-| v1.3 | Offline globe indicator (🌐) replaces floating status dots | ✅ |
+| v1.3 | Offline globe 🌐 replaces floating status dots | ✅ |
 | v1.3 | Swipe-between-panels removed — bottom tab nav only | ✅ |
 | v1.3 | Edge swipe prevention (CSS overscroll-behavior-x + JS edge guard) | ✅ |
-| v1.3 | Mobile editor toolbar hijack on text selection | ✅ |
 | v1.3 | BubbleMenu overflow dropdown (first 3 chips + +N ▾) | ✅ |
+| v1.3 | Mobile editor toolbar hijack on text selection | ✅ |
+| v1.3 | Edit/Tag mode toggle pill — Tag mode default, keyboard suppressed | ✅ |
+| v1.3 | Auto-scroll editor to playback highlight (scrollIntoView) | ✅ |
+| v1.3 | Play → force Tag mode; Edit mode locked during playback | ✅ |
+| v1.3 | SettingsModal tabs = active provider selector (dropdown removed) | ✅ |
 | Bug #22 | swipeDelta referenced in setActivePanel after swipe removal | ✅ |
 | Bug #23 | Mobile toolbar CSS classes defined in template but never styled | ✅ |
-| Bug #24 | Edge touch guard blocked ← back button (now exempts interactive elements) | ✅ |
+| Bug #24 | Edge touch guard blocked ← back button (exempts interactive elements) | ✅ |
+| Bug #25 | iOS keyboard not shown switching to Edit mode (sync focusEditor in gesture) | ✅ |
+| Bug #26 | tagMode watcher fires before editor DOM exists (split into two watchers) | ✅ |
+| Bug #27 | _moveCount not defined — dead variable in column resize onMove | ✅ |
+| Bug #28 | BubbleMenu overflow CSS parse error (.bubble-divider selector eaten) | ✅ |
 | Backlog | Scene/Act/Chapter hierarchy | ⬜ |
 | Backlog | Auto-scroll teleprompter during playback | ⬜ |
 | Backlog | SRT/VTT subtitle export | ⬜ |
+| v1.3 | Mobile UI — swipe panels, bottom nav, safe area, PWA meta | ✅ |
 | Backlog | Cloudflare Worker — OAuth proxy + MiniMax API proxy | ⬜ |
 | Backlog | Google Drive integration (requires Worker for token exchange) | ⬜ |
 
@@ -714,70 +723,97 @@ Tested via debug button: `standalone (media): true`, `env(safe-area-bottom): 29p
 
 ---
 
-## v1.3 Mobile Polish (session 4 — 2026-04-21)
+## v1.3 Mobile Polish — Sessions 4 & 5 (2026-04-21)
 
 ### Files changed
 | File | What changed |
 |---|---|
-| `src/views/EditorView.vue` | Panel toolbar CSS, offline globe, selection-mode toolbar, swipe removal, edge guard |
+| `src/views/EditorView.vue` | Panel toolbar CSS, offline globe, Edit/Tag mode toolbar, swipe removal, edge guard, _moveCount fix, playback lock |
 | `src/composables/useMobileLayout.js` | All swipe code removed, simplified trackStyle + setActivePanel |
-| `src/editor/StoryEditor.vue` | showBubble prop, selection-change emit, overflow dropdown, exposed tag actions |
+| `src/editor/StoryEditor.vue` | showBubble prop, tagMode prop, selection-change emit, overflow dropdown, exposed tag actions, auto-scroll, focusEditor |
 | `src/App.vue` | overscroll-behavior-x: none, onEdgeTouch guard, fixed duplicate onMounted |
+| `src/modals/SettingsModal.vue` | Tabs = active provider (dropdown removed), tab click sets activeProvider, tab syncs on open |
 
-### Mobile toolbar — two-mode system
-Editor panel toolbar now has two modes driven by `mobileSelection` reactive state in EditorView:
+---
 
-**Normal mode** (no selection, no cursor-in-tag):
+### Edit / Tag Mode Toggle
+
+**Architecture:**
+- `mobileTagMode = ref(true)` in EditorView — Tag mode is default
+- `:tag-mode="mobileTagMode"` passed to StoryEditor as prop
+- StoryEditor watches `tagMode` prop + watches `editor` (for initial mount)
+- `applyTagMode(val)` sets/removes `inputmode="none"` on ProseMirror DOM
+
+**iOS keyboard rules (critical):**
+- `inputmode="none"` on the `contenteditable` suppresses keyboard but keeps selection working
+- `.focus()` only raises keyboard when called **synchronously within a user gesture**
+- `onSwitchToEditMode()` calls `editorRef.value?.focusEditor?.()` in the same click handler — NOT in a watcher (watchers are async, iOS ignores them)
+- `focusEditor` exposed from StoryEditor: `() => editor.value?.view?.dom?.focus()` (raw DOM focus, not Tiptap commands.focus())
+
+**Three toolbar states (mobile only):**
 ```
-↑ Import | B  I  §  (dimmed, pointer-events:none)  | charCount
+Tag mode (default):  [✏ ☝] | divider | Narrator | Actor 1 | ... → scroll → | ✕ | ⚡
+Edit mode:           [✏ ☝] | divider | ↑ Import | B  I  §  (dimmed until selection) | charCount
+Locked (playing):    [✏ ☝] (disabled, 0.35 opacity) | role chips...
 ```
 
-**Selection mode** (text selected or cursor inside tag):
-- Toolbar gets subtle purple tint, `overflow-x: auto`, `flex-wrap: nowrap`
-- Scrollable row: all role chips → divider → ✕ (if tagged) → § → ⚡
-- Cursor-in-tag only (no selection): "TAGGED:" + "✕ Remove"
-
-Architecture:
-- `StoryEditor` emits `selection-change: { hasSelection, selectionIsTagged }` via `onSelectionUpdate` Tiptap callback
-- `EditorView` receives it via `@selection-change="onMobileSelectionChange"` → updates `mobileSelection` reactive object
-- `:show-bubble="false"` passed to StoryEditor on mobile — BubbleMenu suppressed entirely
-- `applyVoiceTag`, `autoTagSelection`, `removeVoiceTag`, `insertSegmentBreak` added to `defineExpose`
-
-### BubbleMenu overflow dropdown (desktop)
-- First 3 role chips always visible inline
-- 4+ roles → `+N ▾` toggle button opens absolute dropdown below bubble
-- `CHIP_LIMIT = 3` constant controls threshold
-- `chipDropdownOpen` closes automatically when bubble hides (shouldShowBubble returns false)
-- CSS: `.bubble-overflow`, `.bubble-overflow__toggle`, `.bubble-overflow__dropdown`
-
-### Edge swipe prevention (App.vue)
-```css
-html, body { overscroll-behavior-x: none; }  /* Android Chrome */
-```
+**Playback lock:**
 ```javascript
-// iOS: block touchstart in outer 10% edges, but exempt interactive elements
-function onEdgeTouch(e) {
-  if (e.touches.length !== 1) return
-  if (e.target.closest('button, a, input, select, textarea, [role="button"]')) return
-  const x = e.touches[0].clientX
-  if (x < window.innerWidth * 0.1 || x > window.innerWidth * 0.9) e.preventDefault()
-}
-// Only registered on mobile, passive: false required for preventDefault
+const isPlaybackActive = computed(() => playback.isPlaying || playback.isPaused)
+watch(isPlaybackActive, (active) => { if (active) mobileTagMode.value = true })
 ```
+Toggle disabled + `.m-mode-toggle--locked` class while playing or paused.
 
-### Offline globe (EditorView.vue mobile top bar)
-- 🌐 only visible when `!isOnline` — hidden 99% of the time
-- Positioned just before the ⚙ gear button in the top bar
-- CSS: `filter: grayscale(1) brightness(0.5) sepia(1) hue-rotate(-30deg) saturate(3)` for red tint
-- Old `.m-status` floating dots div and all dot CSS removed
+---
 
-### Persistent CSS problem — root cause & fix
-**Problem:** Every session patches EditorView.vue from the original zip. CSS added in session N is missing in session N+1 because the zip is never updated.
-**Fix:** Always update SNAPSHOT.md + export a new zip at end of session. Start next session with the new zip.
+### Auto-scroll to Playback Highlight (StoryEditor)
 
-### Google Drive backlog notes (discussed, not built)
-Planned additions when Worker is built:
-1. MD import from Drive (file picker → Worker fetch → `onMarkdownImported`)
-2. Project save/load as `.storyfi` JSON to Drive (solves iOS no-File-System-Access)
-3. Audio/ZIP export to Drive
-Build order: Cloudflare Worker → MD import → Project save/load → Audio export
+```javascript
+function scrollHighlightIntoView(from) {
+  try {
+    const view = editor.value.view
+    const domInfo = view.domAtPos(from)
+    const node = domInfo.node.nodeType === Node.TEXT_NODE
+      ? domInfo.node.parentElement : domInfo.node
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } catch (_) { /* domAtPos can throw for out-of-bound positions */ }
+}
+```
+Called at the end of both `highlightWord(from, to)` and `highlightSentence(from, to)` in `defineExpose`.
+
+---
+
+### SettingsModal — Tabs as Provider Selector
+
+Old: Tabs (view switcher) + separate Active Provider dropdown below = duplication.
+New: Tabs do double duty. Clicking a tab = selecting that provider.
+
+```html
+@click="activeTab = p.id; activeProvider = p.id"
+```
+On `open()`: `activeTab.value = savedProvider` so the correct tab pre-selects.
+Active tab has `●` dot prefix via CSS `::before` to signal it's the "selected" state.
+Hint line below tabs: *"The open tab is your active provider."*
+
+---
+
+### Bug #27 — _moveCount (EditorView column resize)
+Dead variable referenced in `onMove` inside `onColResizeStart`. Was used for an early throttling experiment, never declared, empty if-block. Removed entirely — no behaviour change.
+
+---
+
+### Google Drive / Cloudflare Worker (discussed, not built)
+Planned sequence when Worker is ready:
+1. `/api/minimax` — proxy TTS, hide API key
+2. `/api/oauth/google` — token exchange
+3. `/api/drive/upload` — blob → Drive
+4. MD import from Drive picker
+5. Project save/load as `.storyfi` JSON (solves iOS no-File-System-Access)
+6. Audio/ZIP export to Drive
+
+---
+
+### How to Start Next Session
+1. Attach updated `SNAPSHOT.md` + a zip containing all patched files
+2. Key files to include in zip: `EditorView.vue`, `StoryEditor.vue`, `useMobileLayout.js`, `App.vue`, `SettingsModal.vue`
+3. Say what you want to work on — Claude reads SNAPSHOT first

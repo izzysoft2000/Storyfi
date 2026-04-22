@@ -8,16 +8,17 @@
             <button class="modal__close" @click="close">✕</button>
           </div>
 
-          <!-- Provider Tabs -->
+          <!-- Provider Tabs —  clicking a tab = selecting that provider -->
           <div class="provider-tabs">
             <button
               v-for="p in providerList"
               :key="p.id"
               class="provider-tab"
               :class="{ active: activeTab === p.id }"
-              @click="activeTab = p.id"
+              @click="activeTab = p.id; activeProvider = p.id"
             >{{ p.name }}</button>
           </div>
+          <p class="provider-tabs__hint">The open tab is your active provider.</p>
 
           <!-- Provider Settings -->
           <div class="provider-settings">
@@ -79,16 +80,6 @@
             <em>Encryption coming in a future update.</em>
           </p>
 
-          <!-- Active provider selector -->
-          <div class="active-provider">
-            <label class="field-label">Active provider</label>
-            <select v-model="activeProvider" class="field-select">
-              <option v-for="p in providerList" :key="p.id" :value="p.id">
-                {{ p.name }}
-              </option>
-            </select>
-          </div>
-
           <div class="modal__actions">
             <button class="btn btn--ghost" @click="close">Cancel</button>
             <button class="btn btn--accent" @click="save">Save</button>
@@ -126,7 +117,7 @@ async function open() {
     if (record) keys[pid] = record.encrypted ?? '' // plaintext stored in encrypted field
   }
   const saved = await getSetting('activeProvider')
-  if (saved) activeProvider.value = saved
+  if (saved) { activeProvider.value = saved; activeTab.value = saved }
 
   visible.value = true
 }
@@ -208,6 +199,21 @@ defineExpose({ open })
 }
 .provider-tab:hover  { color: var(--color-text) }
 .provider-tab.active { border-bottom-color: var(--color-accent); color: var(--color-accent) }
+.provider-tab.active::before {
+  content: '●';
+  font-size: 7px;
+  margin-right: 5px;
+  vertical-align: middle;
+  color: var(--color-accent);
+}
+
+.provider-tabs__hint {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  opacity: 0.55;
+  padding: 5px 24px 0;
+  margin: 0;
+}
 
 /* Settings area */
 .provider-settings { padding: 20px 24px 0; display: flex; flex-direction: column; gap: 6px }
@@ -239,8 +245,6 @@ defineExpose({ open })
 }
 .browser-info__icon { font-size: 32px }
 
-/* Active provider */
-.active-provider { padding: 16px 24px 0; display: flex; flex-direction: column; gap: 6px }
 
 /* Security note */
 .security-note {

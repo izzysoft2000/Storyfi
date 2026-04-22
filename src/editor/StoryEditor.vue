@@ -147,7 +147,7 @@ const props = defineProps({
   cast:         { type: Array,  default: () => [] },        // VoiceRole[]
   charLimit:    { type: Number, default: 250 },
   showBubble:   { type: Boolean, default: true },           // hide on mobile — toolbar takes over
-  tagMode:      { type: Boolean, default: false },            // mobile: suppress keyboard, keep selection
+  tagMode:      { type: Boolean, default: false },          // mobile: suppress keyboard
 })
 
 const emit = defineEmits([
@@ -183,8 +183,6 @@ const editor = useEditor({
 
   onUpdate: ({ editor }) => {
     debouncedEmit(editor.getJSON())
-    // Signal EditorView to sync groups. Doc is read inside StoryEditor's
-    // own closure via syncGroups — never passes through Vue's emit/proxy chain.
     emit('doc-updated')
   },
 
@@ -218,7 +216,7 @@ watch(() => props.modelValue, val => {
 
 onBeforeUnmount(() => editor.value?.destroy())
 
-// ── Tag mode: suppress keyboard via inputmode="none" on the ProseMirror DOM ──
+// ── Tag mode: suppress keyboard via inputmode="none" ──────────────────────────
 function applyTagMode(tagMode) {
   const dom = editor.value?.view?.dom
   if (!dom) return
@@ -228,15 +226,30 @@ function applyTagMode(tagMode) {
   } else {
     dom.removeAttribute('inputmode')
     // Do NOT call focus here — iOS ignores programmatic focus outside a gesture.
-    // EditorView calls focusEditor() synchronously from the toggle tap instead.
   }
 }
-
-// Re-apply whenever the prop changes (user taps toggle)
 watch(() => props.tagMode, (val) => applyTagMode(val))
-
-// Apply initial tagMode once the editor DOM actually exists
 watch(editor, (ed) => { if (ed) applyTagMode(props.tagMode) })
+
+// ─── Auto-scroll helper ───────────────────────────────────────────────────────
+// Scrolls the editor-scroll container so the highlighted position is centred.
+// Uses domAtPos to find the DOM node, then scrollIntoView on the scroll parent.
+const editorScrollEl = ref(null)
+
+function scrollHighlightIntoView(from) {
+  if (!editor.value?.view) return
+  try {
+    const view = editor.value.view
+    const domInfo = view.domAtPos(from)
+    const node = domInfo.node.nodeType === Node.TEXT_NODE
+      ? domInfo.node.parentElement
+      : domInfo.node
+    if (!node?.scrollIntoView) return
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } catch (_) {
+    // domAtPos can throw for out-of-bound positions — silently ignore
+  }
+}
 
 // ─── Character count ──────────────────────────────────────────────────────────
 const charCount = computed(() =>
@@ -321,6 +334,7 @@ defineExpose({
     editor.value.view.dispatch(
       editor.value.state.tr.setMeta(playbackHighlightKey, { from, to, type: 'word' })
     )
+    scrollHighlightIntoView(from)
   },
 
   /** Highlight a full sentence range via ProseMirror decoration (Phase 4 — OpenAI fallback) */
@@ -329,6 +343,7 @@ defineExpose({
     editor.value.view.dispatch(
       editor.value.state.tr.setMeta(playbackHighlightKey, { from, to, type: 'sentence' })
     )
+    scrollHighlightIntoView(from)
   },
 
   /** Clear any active playback highlight */
@@ -341,7 +356,7 @@ defineExpose({
 
   getEditor: () => editor.value ?? null,
 
-  /** Focus the raw ProseMirror DOM — must be called synchronously within a user gesture on iOS */
+  /** Focus raw ProseMirror DOM — must be called synchronously within a user gesture on iOS */
   focusEditor: () => editor.value?.view?.dom?.focus(),
 
   /** Tag actions — called by EditorView mobile toolbar */

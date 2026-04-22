@@ -53,13 +53,20 @@
         <!-- ── Editor panel ── -->
         <div class="m-panel">
 
-          <!-- ── Tag mode toolbar (default) — keyboard hidden, role chips always ready ── -->
+          <!-- Tag mode toolbar (default) -->
           <div v-if="mobileTagMode" class="m-panel-toolbar m-panel-toolbar--tagmode">
-            <button class="m-mode-toggle" @click="onSwitchToEditMode">
+            <button
+              class="m-mode-toggle"
+              :class="{ 'm-mode-toggle--locked': isPlaybackActive }"
+              :disabled="isPlaybackActive"
+              :title="isPlaybackActive ? 'Stop playback to edit' : 'Switch to Edit mode'"
+              @click="onSwitchToEditMode"
+            >
               <span class="m-mode-toggle__opt">✏</span>
               <span class="m-mode-toggle__opt active">☝</span>
             </button>
             <div class="m-tool-divider" />
+            <button v-if="mobileSelection.selectionIsTagged" class="m-tool-btn m-tool-btn--remove" title="Remove tag" @click="onRemoveTag">✕</button>
             <button
               v-for="role in store.cast"
               :key="role.id"
@@ -67,13 +74,12 @@
               :style="{ '--role-color': role.color, borderColor: role.color }"
               @click="onMobileTagRole(role)"
             >{{ role.label }}</button>
-            <button v-if="mobileSelection.selectionIsTagged" class="m-tool-btn m-tool-btn--remove" @click="onRemoveTag">✕</button>
             <button class="m-tool-btn" @click="onAutoTagSelection">⚡</button>
           </div>
 
-          <!-- ── Edit mode toolbar — normal keyboard, no role chips ── -->
+          <!-- Edit mode toolbar -->
           <div v-else class="m-panel-toolbar">
-            <button class="m-mode-toggle" @click="mobileTagMode = true">
+            <button class="m-mode-toggle" title="Switch to Tag mode" @click="mobileTagMode = true">
               <span class="m-mode-toggle__opt active">✏</span>
               <span class="m-mode-toggle__opt">☝</span>
             </button>
@@ -513,8 +519,6 @@ function onColResizeStart(colId, e) {
     const maxW = (wsBodyRef.value?.offsetWidth ?? 1400) - 180 - 5
     _colLastW = Math.max(180, Math.min(maxW, Math.round(mv.clientX - _colLeftEdge)))
     _activeResize.value = { colId: _colResizeId, width: _colLastW }
-    if (_moveCount++ < 3) {
-        }
   }
 
   function onUp() {
@@ -583,30 +587,21 @@ function onBold()    { editorRef.value?.getEditor?.()?.chain().focus().toggleBol
 function onItalic()  { editorRef.value?.getEditor?.()?.chain().focus().toggleItalic().run() }
 function onBreak()   { editorRef.value?.getEditor?.()?.chain().focus().insertSegmentBreak().run() }
 
-// ── Mobile toolbar mode + selection state ──────────────────────────────
-// true = Tag mode (keyboard suppressed, role chips always visible)
-// false = Edit mode (normal keyboard, toolbar reacts to selection)
-const mobileTagMode   = ref(true)   // Tag mode on by default — keyboard hidden until user switches
+// ── Mobile toolbar state ──────────────────────────────────────────────────────
+const mobileTagMode   = ref(true)
 const mobileSelection = reactive({ hasSelection: false, selectionIsTagged: false })
+const isPlaybackActive = computed(() => playback.isPlaying || playback.isPaused)
+watch(isPlaybackActive, (active) => { if (active) mobileTagMode.value = true })
 
 function onMobileSelectionChange({ hasSelection, selectionIsTagged }) {
   mobileSelection.hasSelection      = hasSelection
   mobileSelection.selectionIsTagged = selectionIsTagged
 }
-function onMobileTagRole(role) {
-  editorRef.value?.applyVoiceTag?.(role)
-}
-function onRemoveTag() {
-  editorRef.value?.removeVoiceTag?.()
-}
-function onAutoTagSelection() {
-  editorRef.value?.autoTagSelection?.()
-}
+function onMobileTagRole(role)    { editorRef.value?.applyVoiceTag?.(role) }
+function onRemoveTag()            { editorRef.value?.removeVoiceTag?.() }
+function onAutoTagSelection()     { editorRef.value?.autoTagSelection?.() }
 function onSwitchToEditMode() {
   mobileTagMode.value = false
-  // Must call focusEditor() synchronously here — iOS only raises the keyboard
-  // when focus originates from within the same user gesture. Watchers fire async
-  // (next tick) and are ignored by iOS's keyboard heuristic.
   editorRef.value?.focusEditor?.()
 }
 
@@ -1081,78 +1076,60 @@ function goLibrary() { emit('go-library') }
   padding: 2px 4px;
 }
 
-/* ─── Panel toolbar (inside each swipeable panel) ─────────────────────────── */
+/* ─── Panel toolbar ───────────────────────────────────────────────────────── */
 .m-panel-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 40px;
-  padding: 0 10px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
+  display: flex; align-items: center; gap: 4px; height: 40px;
+  padding: 0 10px; background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border); flex-shrink: 0;
 }
-.m-panel-title {
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-}
-.m-panel-badge {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--color-text-muted);
-  margin-left: 6px;
-}
+.m-panel-title { font-family: var(--font-ui); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; color: var(--color-text-muted); text-transform: uppercase; }
+.m-panel-badge { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); margin-left: 6px; }
 .m-tool-btn {
-  all: unset;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px 9px;
-  border-radius: 6px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-  transition: background 0.12s, color 0.12s;
-  white-space: nowrap;
+  all: unset; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  padding: 5px 9px; border-radius: 6px; font-family: var(--font-ui); font-size: 13px;
+  color: var(--color-text-muted); flex-shrink: 0; transition: background 0.12s, color 0.12s; white-space: nowrap;
 }
-.m-tool-btn:active {
-  background: rgba(124, 92, 191, 0.18);
-  color: var(--color-text);
-}
-.m-tool-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--color-border);
-  margin: 0 2px;
-  flex-shrink: 0;
-}
-.m-tool-charcount {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-left: auto;
-  padding-right: 2px;
-}
-.m-panel-body {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
+.m-tool-btn:active        { background: rgba(124,92,191,0.18); color: var(--color-text); }
+.m-tool-btn--disabled     { opacity: 0.3; cursor: default; pointer-events: none; }
+.m-tool-btn--remove       { color: var(--color-error) !important; flex-shrink: 0; }
+.m-tool-divider           { width: 1px; height: 18px; background: var(--color-border); margin: 0 2px; flex-shrink: 0; }
+.m-tool-charcount         { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); margin-left: auto; padding-right: 2px; }
+.m-panel-body             { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 
-/* ─── Offline globe indicator ─────────────────────────────────────────────── */
-.m-status-globe {
-  font-size: 16px;
-  line-height: 1;
-  flex-shrink: 0;
+/* ─── Mode toggle pill ─────────────────────────────────────────────────────── */
+.m-mode-toggle {
+  all: unset; cursor: pointer; display: inline-flex; align-items: center; flex-shrink: 0;
+  background: var(--color-bg); border: 1px solid var(--color-border);
+  border-radius: 20px; padding: 2px 3px; gap: 2px; transition: opacity 0.15s;
 }
-.m-status-globe--offline { filter: grayscale(1) brightness(0.5) sepia(1) hue-rotate(-30deg) saturate(3); }
+.m-mode-toggle--locked    { opacity: 0.35; cursor: not-allowed; }
+.m-mode-toggle__opt {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 22px; border-radius: 16px; font-size: 13px;
+  color: var(--color-text-muted); transition: background 0.15s, color 0.15s;
+}
+.m-mode-toggle__opt.active { background: var(--color-accent); color: #fff; }
+
+/* ─── Tag mode toolbar ─────────────────────────────────────────────────────── */
+.m-panel-toolbar--tagmode {
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; flex-wrap: nowrap; gap: 5px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  border-bottom-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+.m-panel-toolbar--tagmode::-webkit-scrollbar { display: none; }
+
+/* ─── Role chips ───────────────────────────────────────────────────────────── */
+.m-role-chip {
+  all: unset; cursor: pointer; flex-shrink: 0; padding: 4px 11px; border-radius: 20px;
+  border: 1px solid var(--role-color, var(--color-border)); font-size: 12px;
+  font-family: var(--font-ui); color: var(--role-color, var(--color-text-muted));
+  white-space: nowrap; transition: background 0.12s;
+}
+.m-role-chip:active { background: rgba(255,255,255,0.1); }
+
+/* ─── Offline globe ────────────────────────────────────────────────────────── */
+.m-status-globe           { font-size: 16px; line-height: 1; flex-shrink: 0; }
+.m-status-globe--offline  { filter: grayscale(1) brightness(0.5) sepia(1) hue-rotate(-30deg) saturate(3); }
 
 /* ─── Swipeable panel track ────────────────────────────────────────────────── */
 .m-panels {
@@ -1234,85 +1211,4 @@ function goLibrary() { emit('go-library') }
 .m-workspace--landscape .m-bottom-bar {
   height: 48px;
 }
-
-/* ─── Edit / Tag mode toggle pill ────────────────────────────────────────── */
-.m-mode-toggle {
-  all: unset;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  margin-left: auto;
-  flex-shrink: 0;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 20px;
-  padding: 2px 3px;
-  gap: 2px;
-}
-.m-mode-toggle__opt {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 22px;
-  border-radius: 16px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-  transition: background 0.15s, color 0.15s;
-}
-.m-mode-toggle__opt.active {
-  background: var(--color-accent);
-  color: #fff;
-}
-
-/* ─── Tag mode toolbar ───────────────────────────────────────────────────── */
-.m-panel-toolbar--tagmode {
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  flex-wrap: nowrap;
-  gap: 5px;
-  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
-  border-bottom-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
-}
-.m-panel-toolbar--tagmode::-webkit-scrollbar { display: none; }
-.m-panel-toolbar--tagmode .m-mode-toggle { margin-left: 0; flex-shrink: 0; }
-
-
-
-.m-role-chip {
-  all: unset;
-  cursor: pointer;
-  flex-shrink: 0;
-  padding: 4px 11px;
-  border-radius: 20px;
-  border: 1px solid var(--role-color, var(--color-border));
-  font-size: 12px;
-  font-family: var(--font-ui);
-  color: var(--role-color, var(--color-text-muted));
-  white-space: nowrap;
-  transition: background 0.12s;
-}
-.m-role-chip:active { background: rgba(255,255,255,0.1); }
-
-.m-tool-btn--disabled {
-  opacity: 0.3;
-  cursor: default;
-  pointer-events: none;
-}
-.m-tool-btn--remove {
-  color: var(--color-error) !important;
-  flex-shrink: 0;
-}
-.m-tool-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.m-tool-autotag { flex-shrink: 0; }
-
 </style>
