@@ -219,23 +219,24 @@ watch(() => props.modelValue, val => {
 onBeforeUnmount(() => editor.value?.destroy())
 
 // ── Tag mode: suppress keyboard via inputmode="none" on the ProseMirror DOM ──
-function applyTagMode(tagMode, fromToggle = false) {
+function applyTagMode(tagMode) {
   const dom = editor.value?.view?.dom
   if (!dom) return
   if (tagMode) {
     dom.setAttribute('inputmode', 'none')
-    if (fromToggle) editor.value?.commands.blur() // only dismiss keyboard on active toggle
+    dom.blur()
   } else {
     dom.removeAttribute('inputmode')
-    if (fromToggle) editor.value?.commands.focus() // only raise keyboard on active toggle
+    // Do NOT call focus here — iOS ignores programmatic focus outside a gesture.
+    // EditorView calls focusEditor() synchronously from the toggle tap instead.
   }
 }
 
 // Re-apply whenever the prop changes (user taps toggle)
-watch(() => props.tagMode, (val) => applyTagMode(val, true))
+watch(() => props.tagMode, (val) => applyTagMode(val))
 
 // Apply initial tagMode once the editor DOM actually exists
-watch(editor, (ed) => { if (ed) applyTagMode(props.tagMode, false) })
+watch(editor, (ed) => { if (ed) applyTagMode(props.tagMode) })
 
 // ─── Character count ──────────────────────────────────────────────────────────
 const charCount = computed(() =>
@@ -339,6 +340,9 @@ defineExpose({
   },
 
   getEditor: () => editor.value ?? null,
+
+  /** Focus the raw ProseMirror DOM — must be called synchronously within a user gesture on iOS */
+  focusEditor: () => editor.value?.view?.dom?.focus(),
 
   /** Tag actions — called by EditorView mobile toolbar */
   applyVoiceTag,

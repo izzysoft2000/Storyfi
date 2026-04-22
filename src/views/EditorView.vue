@@ -55,7 +55,7 @@
 
           <!-- ── Tag mode toolbar (default) — keyboard hidden, role chips always ready ── -->
           <div v-if="mobileTagMode" class="m-panel-toolbar m-panel-toolbar--tagmode">
-            <button class="m-mode-toggle" @click="mobileTagMode = false">
+            <button class="m-mode-toggle" @click="onSwitchToEditMode">
               <span class="m-mode-toggle__opt">✏</span>
               <span class="m-mode-toggle__opt active">☝</span>
             </button>
@@ -601,6 +601,13 @@ function onRemoveTag() {
 }
 function onAutoTagSelection() {
   editorRef.value?.autoTagSelection?.()
+}
+function onSwitchToEditMode() {
+  mobileTagMode.value = false
+  // Must call focusEditor() synchronously here — iOS only raises the keyboard
+  // when focus originates from within the same user gesture. Watchers fire async
+  // (next tick) and are ignored by iOS's keyboard heuristic.
+  editorRef.value?.focusEditor?.()
 }
 
 // Wire playback store whenever the editor mounts
