@@ -129,13 +129,19 @@ export function extractTaggedSpans(doc) {
     if (voiceTag) {
       const { roleId, roleLabel, color } = voiceTag.attrs
 
+      // Allow merging across a single paragraph boundary (gap of 2: close + open tag).
+      // Without this, the same role across adjacent paragraphs becomes two spans,
+      // producing different segment counts depending on platform paragraph structure.
+      const contiguous     = current?.to === pos
+      const paraAdjacent   = current?.to + 2 === pos
+
       if (
         current &&
         current.roleId === roleId &&
-        current.to   === pos           // contiguous
+        (contiguous || paraAdjacent)
       ) {
-        // Extend current span
-        current.text += node.text
+        // Extend current span — add a space when bridging a paragraph boundary
+        current.text += (paraAdjacent ? ' ' : '') + node.text
         current.to    = pos + node.nodeSize
       } else {
         // New span
