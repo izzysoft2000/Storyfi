@@ -91,6 +91,10 @@ import { useEditor, EditorContent, BubbleMenu } from '@tiptap/vue-3'
 import { Extension }    from '@tiptap/core'
 import StarterKit   from '@tiptap/starter-kit'
 import Placeholder  from '@tiptap/extension-placeholder'
+import Table        from '@tiptap/extension-table'
+import TableRow     from '@tiptap/extension-table-row'
+import TableCell    from '@tiptap/extension-table-cell'
+import TableHeader  from '@tiptap/extension-table-header'
 import { VoiceTag }     from './extensions/VoiceTag.js'
 import { SegmentBreak } from './extensions/SegmentBreak.js'
 import { marked }       from 'marked'
@@ -173,6 +177,10 @@ const editor = useEditor({
     }),
     VoiceTag,
     SegmentBreak,
+    Table.configure({ resizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
     Extension.create({
       name: 'playbackHighlight',
       addProseMirrorPlugins: () => [playbackHighlightPlugin],
@@ -586,6 +594,40 @@ defineExpose({
   white-space: nowrap;
 }
 .bubble-autotag:hover { background: rgba(124,92,191,0.22); border-color: var(--color-accent) }
+
+/* ─── Table styles ───────────────────────────────────────── */
+:deep(.prose-editor) table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 13px;
+}
+:deep(.prose-editor) th,
+:deep(.prose-editor) td {
+  border: 1px solid var(--color-border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+:deep(.prose-editor) th {
+  background: rgba(124, 92, 191, 0.1);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+:deep(.prose-editor) tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+:deep(.prose-editor) code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: rgba(124, 92, 191, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--color-accent);
+}
 
 /* ─── Editor Scroll Area ─────────────────────────────────── */
 .editor-scroll {

@@ -49,6 +49,10 @@ export function buildAutoTagOperations(editor, roles, options) {
   let pendingRole = null
 
   doc.descendants((node, pos) => {
+    // Skip entire table subtrees — [LABEL] patterns inside tables are
+    // metadata (voice assignment reference), not script content to tag
+    if (node.type.name === 'table') return false
+
     // Skip non-text nodes — but DON'T reset pendingRole (it carries across paragraphs)
     if (!node.isText) return
 

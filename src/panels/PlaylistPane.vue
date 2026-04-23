@@ -5,6 +5,7 @@
     <div class="playlist-toolbar">
       <span v-if="gen.groups.length > 0" class="playlist-count">
         {{ gen.groups.length }} segment{{ gen.groups.length !== 1 ? 's' : '' }}
+        <span class="playlist-count__time">{{ fmtTotal(totalEstimatedMs) }}</span>
       </span>
       <div class="toolbar-right">
         <button
@@ -73,7 +74,7 @@
             <span class="group-row__text">{{ truncate(firstSentenceText(group), 44) }}</span>
             <span class="group-row__sentences">{{ (group.sentences ?? []).length }}s</span>
             <span class="group-row__duration">
-              {{ group.totalDurationMs != null ? fmt(group.totalDurationMs) : '—' }}
+              {{ fmtGroup(group) }}
             </span>
             <span class="group-row__status">
               <span v-if="gen.diskDivergences[group.id]" class="status-dot status-dot--warn"
@@ -206,6 +207,38 @@ function divergenceLabel(type) {
 }
 
 function fmt(ms) { return formatDuration(ms) }
+
+// ── Duration estimation ────────────────────────────────────────────────────────
+// ~15 chars/second is a reasonable average for TTS narration/dialogue
+const CHARS_PER_SEC = 15
+
+function groupText(group) {
+  return (group.sentences ?? []).map(s => s.text ?? '').join(' ')
+}
+
+function estimatedMs(group) {
+  if (group.totalDurationMs != null) return group.totalDurationMs
+  const chars = groupText(group).length
+  return Math.round((chars / CHARS_PER_SEC) * 1000)
+}
+
+function fmtGroup(group) {
+  const ms       = estimatedMs(group)
+  const isActual = group.totalDurationMs != null
+  return isActual ? fmt(ms) : '~' + fmt(ms)
+}
+
+const totalEstimatedMs = computed(() =>
+  gen.groups.reduce((sum, g) => sum + estimatedMs(g), 0)
+)
+
+function fmtTotal(ms) {
+  if (!ms) return ''
+  const totalSec = Math.round(ms / 1000)
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 </script>
 
 <style scoped>
@@ -224,6 +257,11 @@ function fmt(ms) { return formatDuration(ms) }
 .playlist-count {
   font-family: var(--font-mono); font-size: 11px;
   color: var(--color-text-muted); opacity: 0.7;
+  display: flex; align-items: center; gap: 8px;
+}
+.playlist-count__time {
+  opacity: 0.6;
+  font-size: 11px;
 }
 
 .toolbar-right { display: flex; gap: 5px }

@@ -769,6 +769,7 @@ function onAutoTag() {
     const LABEL_RE = /\[([^\]]+)\]/g
     const labels = new Set()
     doc.descendants(node => {
+      if (node.type.name === 'table') return false  // skip table metadata
       if (!node.isText) return
       for (const m of node.text.matchAll(LABEL_RE)) labels.add(m[1].trim())
     })

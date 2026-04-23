@@ -92,20 +92,15 @@ export const SEGMENT_BREAK_TOKEN = '\x00BREAK\x00'
 export function splitTaggedSpan(fullText, charLimit = 250) {
   if (!fullText?.trim()) return []
 
-  // Step 1 — split on manual SegmentBreak tokens first
-  const manualChunks = fullText
+  // Split ONLY on manual § SegmentBreak tokens.
+  // Paragraph boundaries are already handled by extractTaggedSpans (one span per paragraph).
+  // Char-limit auto-splitting is intentionally removed — if a paragraph is too long,
+  // the user inserts a § break in the editor.
+  return fullText
     .split(SEGMENT_BREAK_TOKEN)
     .map(s => s.trim())
     .filter(s => s.length > 0)
-
-  // Step 2 — apply char-limit splitting to each manual chunk
-  const result = []
-  for (const chunk of manualChunks) {
-    const subChunks = splitToChunks(chunk, charLimit)
-    result.push(...subChunks)
-  }
-
-  return result
+    .map(text => ({ text, splitWarning: false }))
 }
 
 /**
@@ -118,7 +113,7 @@ export function splitTaggedSpan(fullText, charLimit = 250) {
  * @returns {{ roleId, roleLabel, color, text, from, to }[]}
  */
 export function extractTaggedSpans(doc) {
-  const spans  = []
+  const spans   = []
   let   current = null
 
   doc.descendants((node, pos) => {
@@ -129,27 +124,16 @@ export function extractTaggedSpans(doc) {
     if (voiceTag) {
       const { roleId, roleLabel, color } = voiceTag.attrs
 
-      // Allow merging across a single paragraph boundary (gap of 2: close + open tag).
-      // Without this, the same role across adjacent paragraphs becomes two spans,
-      // producing different segment counts depending on platform paragraph structure.
-      const contiguous     = current?.to === pos
-      const paraAdjacent   = current?.to + 2 === pos
-
-      if (
-        current &&
-        current.roleId === roleId &&
-        (contiguous || paraAdjacent)
-      ) {
-        // Extend current span — add a space when bridging a paragraph boundary
-        current.text += (paraAdjacent ? ' ' : '') + node.text
+      // Merge only when strictly contiguous (same paragraph, no gap).
+      // Paragraph boundaries intentionally create separate spans — each
+      // paragraph becomes its own segment. Users use § for manual breaks.
+      if (current && current.roleId === roleId && current.to === pos) {
+        current.text += node.text
         current.to    = pos + node.nodeSize
       } else {
-        // New span
         if (current) spans.push(current)
         current = {
-          roleId,
-          roleLabel,
-          color,
+          roleId, roleLabel, color,
           text: node.text ?? '',
           from: pos,
           to:   pos + node.nodeSize,

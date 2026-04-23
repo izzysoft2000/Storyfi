@@ -86,56 +86,78 @@ export const useGenerationStore = defineStore('generation', () => {
     const spans = extractTaggedSpans(doc)
     const existingGroupMap = Object.fromEntries(groups.value.map(g => [g.spanKey, g]))
 
-    const newGroups = spans.map((span, spanIndex) => {
-      // Create a stable key for this span by role + position
-      const spanKey = `${span.roleId}:${span.from}:${span.to}`
+    // Group consecutive same-role spans together.
+    // Each span (paragraph) becomes one sentence; consecutive paragraphs
+    // under the same [LABEL] become one playlist group.
+    const spanGroups = []
+    for (const span of spans) {
+      const last = spanGroups[spanGroups.length - 1]
+      if (last && last.roleId === span.roleId) {
+        last.spans.push(span)
+        last.to = span.to
+      } else {
+        spanGroups.push({
+          roleId:    span.roleId,
+          roleLabel: span.roleLabel,
+          color:     span.color,
+          from:      span.from,
+          to:        span.to,
+          spans:     [span],
+        })
+      }
+    }
+
+    const newGroups = spanGroups.map((sg, groupIndex) => {
+      // Stable key: role + position of first and last span
+      const spanKey = `${sg.roleId}:${sg.from}:${sg.to}`
       const existing = existingGroupMap[spanKey]
 
       if (existing && existing.stitchStatus === 'ready' && !forceRegenerate) {
-        return existing // keep ready group
+        return existing
       }
 
-      // Split into sentences
-      const chunks = splitTaggedSpan(span.text, charLimit)
+      // Each span in the group becomes one or more sentences (split by § only)
+      const sentenceList = []
+      let si = 0
+      for (const span of sg.spans) {
+        const chunks = splitTaggedSpan(span.text, charLimit)
+        let charCursor = 0
+        for (const chunk of chunks) {
+          const sentenceId = existing?.sentences?.[si]?.id ?? uuid()
+          const textStart  = charCursor
+          const textEnd    = charCursor + chunk.text.length
+          charCursor = textEnd + 1
 
-      // Build character-offset positions within span text
-      let charCursor = 0
-      const sentenceList = chunks.map((chunk, si) => {
-        const sentenceId = existing?.sentences?.[si]?.id ?? uuid()
-        const textStart  = charCursor
-        const textEnd    = charCursor + chunk.text.length
-        charCursor = textEnd + 1 // +1 for separator
-
-        return {
-          id:               sentenceId,
-          paragraphGroupId: existing?.id ?? `group_${spanIndex}_${uuid()}`,
-          roleId:           span.roleId,
-          text:             chunk.text,
-          sentenceIndex:    si,
-          status:           'pending',
-          audioKey:         null,
-          durationMs:       null,
-          startMs:          null,
-          endMs:            null,
-          editorFrom:       span.from + textStart,
-          editorTo:         span.from + textEnd,
-          wordTimings:      null,
-          splitWarning:     chunk.splitWarning,
+          sentenceList.push({
+            id:               sentenceId,
+            paragraphGroupId: null, // filled below
+            roleId:           sg.roleId,
+            text:             chunk.text,
+            sentenceIndex:    si,
+            status:           'pending',
+            audioKey:         null,
+            durationMs:       null,
+            startMs:          null,
+            endMs:            null,
+            editorFrom:       span.from + textStart,
+            editorTo:         span.from + textEnd,
+            wordTimings:      null,
+            splitWarning:     chunk.splitWarning,
+          })
+          si++
         }
-      })
+      }
 
-      const groupId = existing?.id ?? `group_${spanIndex}_${uuid()}`
-
-      // Fix sentence paragraphGroupId now that we have it
+      const groupId = existing?.id ?? `group_${groupIndex}_${uuid()}`
       sentenceList.forEach(s => { s.paragraphGroupId = groupId })
 
       return {
         id:                  groupId,
         spanKey,
-        roleId:              span.roleId,
-        roleLabel:           span.roleLabel,
-        color:               span.color,
-        order:               spanIndex + 1,
+        roleId:              sg.roleId,
+        roleLabel:           sg.roleLabel,
+        color:               sg.color,
+        order:               groupIndex + 1,
         sentences:           sentenceList,
         sentenceIds:         sentenceList.map(s => s.id),
         stitchedAudioKey:    null,

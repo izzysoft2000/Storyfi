@@ -1,8 +1,8 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-22 (session 6)
-> Current phase: v1.4 — Auto-tag & Splitter improvements
+> Last updated: 2026-04-22 (session 8)
+> Current phase: v1.6 — Segment grouping & table support
 
 ---
 
@@ -636,7 +636,22 @@ Waveform canvas replaces the thin `player-track` progress div entirely. 52px tal
 | v1.4 | splitter.js: merge same-role spans across paragraph boundaries (+space) | ✅ |
 | Bug #29 | Auto-tag empty cast: buildAutoTagOperations early-return on roles.length=0 | ✅ |
 | Bug #30 | Desktop/mobile segment count mismatch — paragraph boundary gap of 2 in extractTaggedSpans | ✅ |
+| v1.5 | Playlist subentry click → highlight + scroll + cursor in editor (desktop + mobile) | ✅ |
+| v1.5 | Mobile: subentry tap switches to Editor panel then highlights after transition (320ms) | ✅ |
+| v1.5 | StoryEditor: expose placeCursor(pos) for programmatic cursor placement | ✅ |
+| v1.5 | PlaylistPane: sentence rows clickable, emit focus-sentence { from, to } | ✅ |
+| v1.6 | Playlist subentry wrong scroll — editorFrom offset by paragraph boundary gaps | ✅ |
+| v1.6 | Segment structure: paragraph = segment, no char-limit auto-splitting | ✅ |
+| v1.6 | Playlist: consecutive same-role paragraphs grouped under one header | ✅ |
+| v1.6 | Tiptap table extensions added (pinned @2.27.2) | ✅ |
+| v1.6 | Auto-tagger + label scan skip table cells (return false on table node) | ✅ |
+| Bug #31 | Playlist subentry jumps wrong — char offset vs ProseMirror position | ✅ |
+| Bug #32 | Segments split mid-paragraph by char limit — removed auto-splitting | ✅ |
+| Bug #33 | One group per paragraph causing redundant header+subentry display | ✅ |
 | Backlog | Scene/Act/Chapter hierarchy | ⬜ |
+| Backlog | Cloudflare Worker — TTS proxy + OAuth (MiniMax CORS fix) | ⬜ |
+| Backlog | Google Drive integration (requires Worker) | ⬜ |
+| Backlog | GitHub sync endpoint on Worker | ⬜ |
 | Backlog | Auto-scroll teleprompter during playback | ⬜ |
 | Backlog | SRT/VTT subtitle export | ⬜ |
 | v1.3 | Mobile UI — swipe panels, bottom nav, safe area, PWA meta | ✅ |
@@ -913,6 +928,134 @@ onSelectionUpdate: ({ editor }) => {
 - `src/editor/StoryEditor.vue`
 - `src/editor/autoTagger.js`
 - `src/editor/splitter.js`
+- `src/panels/CastPanel.vue`
+- `src/panels/PlaylistPane.vue`
+- `src/modals/SettingsModal.vue`
+- `src/composables/useMobileLayout.js`
+- `src/App.vue`
+
+---
+
+## v1.5 Playlist Subentry Navigation (session 7 — 2026-04-22)
+
+### Files changed
+| File | What changed |
+|---|---|
+| `src/panels/PlaylistPane.vue` | Sentence rows clickable, emit focus-sentence, hover tint CSS |
+| `src/views/EditorView.vue` | onFocusSentence handler, 320ms transition wait on mobile, focus-sentence wired to both PlaylistPane instances |
+| `src/editor/StoryEditor.vue` | placeCursor(pos) exposed in defineExpose |
+
+---
+
+### Playlist Subentry → Editor Navigation
+
+**Desktop flow:**
+Click subentry → `highlightSentence(from, to)` decoration → `placeCursor(to)` → BubbleMenu appears at end of span → user hits ✕ Remove to untag
+
+**Mobile flow:**
+Tap subentry → `setActivePanel('editor')` → `await 320ms` (panel transition is 280ms) → `highlightSentence` + `placeCursor(to)` → toolbar shows ✕ because `selectionIsTagged` fires
+
+**Why 320ms and not nextTick:**
+`nextTick` fires after Vue's DOM update but before the CSS slide transition (`0.28s cubic-bezier`) completes. The editor scroll resets to top during animation, clobbering `scrollIntoView`. 320ms guarantees the panel has fully arrived.
+
+**Cursor at `to` not `to-1`:**
+Tiptap's `shouldShowBubble` checks `isActive('voiceTag')` — this works at the boundary position (`to`) as well as inside the mark. Placing at `to` feels more natural (cursor after the span) and still triggers the bubble.
+
+```javascript
+async function onFocusSentence({ from, to }) {
+  if (isMobile.value && activePanel.value !== 'editor') {
+    setActivePanel('editor')
+    await new Promise(r => setTimeout(r, 320))
+  }
+  editorRef.value?.highlightSentence(from, to)
+  editorRef.value?.placeCursor(to)
+}
+```
+
+---
+
+### Cloudflare Worker / GitHub / Cost Notes (discussed, not built)
+- Cloudflare Workers free tier: 100k requests/day — fine for personal + shared PWA use
+- TTS proxy Worker: users supply own API keys → Cloudflare cost stays near zero regardless of traffic
+- GitHub MCP not available in claude.ai web (requires OAuth GitHub App — not supported yet)
+- GitHub sync via Worker + Google Drive is viable but deprioritised until TTS Worker is built
+- Sharing Cloudflare Pages URL publicly: effectively free (static hosting + user-owned API keys)
+
+---
+
+### Files needed in next session zip
+- `src/views/EditorView.vue`
+- `src/editor/StoryEditor.vue`
+- `src/editor/autoTagger.js`
+- `src/editor/splitter.js`
+- `src/panels/CastPanel.vue`
+- `src/panels/PlaylistPane.vue`
+- `src/modals/SettingsModal.vue`
+- `src/composables/useMobileLayout.js`
+- `src/App.vue`
+
+---
+
+## v1.6 Segment Grouping & Table Support (session 8 — 2026-04-22)
+
+### Files changed
+| File | What changed |
+|---|---|
+| `src/editor/splitter.js` | Removed paragraph merging + char-limit splitting; paragraph = segment |
+| `src/store/generation.js` | Consecutive same-role spans grouped into one playlist group |
+| `src/editor/autoTagger.js` | `return false` on table nodes — skips entire table subtree |
+| `src/editor/StoryEditor.vue` | Table extensions added + dark-theme table CSS |
+| `src/views/EditorView.vue` | Empty-cast label scan skips table cells |
+
+---
+
+### Segment Architecture (final model)
+
+**One paragraph = one segment.** No char-limit auto-splitting.
+
+```
+[NARRATOR]              → pendingRole = NARRATOR (autoTagger)
+  Para 1                → span 1, segment 1
+  Para 2                → span 2, segment 2
+  Para 3                → span 3, segment 3
+[MAR-VELL]              → pendingRole = MAR-VELL
+  Para 4                → span 4, segment 4
+```
+
+**Playlist grouping:** `buildGroupsFromDoc` merges consecutive same-role spans into one group. Each paragraph = one sentence within the group. Result: one group header per [LABEL] section, numbered subentries per paragraph.
+
+**Manual splitting:** User inserts § break in editor to split a paragraph into multiple segments.
+
+**No char-limit:** `splitTaggedSpan` now only splits on `SEGMENT_BREAK_TOKEN` (§). Char-limit parameter kept in signature for API compatibility but ignored.
+
+---
+
+### Bug #31 — Playlist Subentry Wrong Scroll Position
+
+**Root cause:** `editorFrom = span.from + textOffset` — when spans were merged across paragraph boundaries, each boundary added 2 ProseMirror positions (close + open node) not present in the merged text string. Sentence 2 was off by 2 per boundary crossed.
+
+**Fix:** Removed paragraph merging from `extractTaggedSpans`. Each paragraph is its own span with its own `from`/`to`. Text offset = ProseMirror offset exactly. `charRangeToDocPositions` machinery not needed.
+
+---
+
+### Tiptap Table Support
+
+```bash
+npm install @tiptap/extension-table@2.27.2 @tiptap/extension-table-row@2.27.2 @tiptap/extension-table-cell@2.27.2 @tiptap/extension-table-header@2.27.2
+```
+
+Extensions added to StoryEditor: `Table.configure({ resizable: false })`, `TableRow`, `TableHeader`, `TableCell`.
+
+Table cells excluded from auto-tag via `return false` on `table` node type in `doc.descendants()` — ProseMirror skips entire subtree when callback returns false.
+
+---
+
+### Files needed in next session zip
+- `src/views/EditorView.vue`
+- `src/editor/StoryEditor.vue`
+- `src/editor/autoTagger.js`
+- `src/editor/splitter.js`
+- `src/store/generation.js`
 - `src/panels/CastPanel.vue`
 - `src/panels/PlaylistPane.vue`
 - `src/modals/SettingsModal.vue`
