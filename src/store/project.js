@@ -6,7 +6,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getProject, saveProject } from './db.js'
+import { getProject, saveProject, getSetting } from './db.js'
 import { debounce } from '@/utils/debounce.js'
 import { uuid } from '@/utils/uuid.js'
 import { ROLE_COLORS, nextRoleColor } from '@/utils/colors.js'
@@ -109,20 +109,24 @@ export const useProjectStore = defineStore('project', () => {
 
   // ─── Cast (Voice Roles) Mutations ───────────────────────────────────────────
 
-  function addRole(labelOverride) {
+  async function addRole(labelOverride) {
     if (!project.value) return
     const existingColors = project.value.cast.map(r => r.color)
     const idx   = project.value.cast.length
-    const id    = uuid()                // uuid prevents id collision after delete+add
+    const id    = uuid()
     const label = labelOverride ?? (idx === 0 ? 'Narrator' : `Actor ${idx}`)
     const color = nextRoleColor(existingColors)
 
-    project.value.cast.push({
-      id,
-      label,
-      color,
-      voiceAssignment: defaultVoiceAssignment(),
-    })
+    // Inherit provider from last cast member, or fall back to saved active provider
+    const lastRole = project.value.cast[project.value.cast.length - 1]
+    const inheritedProviderId = lastRole?.voiceAssignment?.providerId
+      ?? (await getSetting('activeProvider'))
+      ?? 'minimax'
+
+    const voiceAssignment = defaultVoiceAssignment()
+    voiceAssignment.providerId = inheritedProviderId
+
+    project.value.cast.push({ id, label, color, voiceAssignment })
     markDirty()
     return project.value.cast[project.value.cast.length - 1]
   }

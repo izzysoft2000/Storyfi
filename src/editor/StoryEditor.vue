@@ -48,6 +48,14 @@
         <!-- Cursor-only label (no selection, just inside a tag) -->
         <span v-else class="bubble-menu__label">Tagged span:</span>
 
+        <!-- Jump to Playlist — shown when cursor/selection is inside a tag -->
+        <button
+          v-if="selectionIsTagged"
+          class="bubble-jump"
+          title="Jump to this entry in the Playlist"
+          @mousedown.prevent="emit('jump-to-playlist', { from: editor.state.selection.from, to: editor.state.selection.to })"
+        >↗</button>
+
         <!-- Remove — shown whenever cursor/selection is inside a tag -->
         <button
           v-if="selectionIsTagged"
@@ -160,6 +168,7 @@ const emit = defineEmits([
   'auto-tag-result',    // emitted after selection auto-tag with { tagged, skipped, unmatched }
   'doc-updated',        // emitted with live ProseMirror doc on every Tiptap transaction
   'selection-change',   // emitted on every selection update: { hasSelection, selectionIsTagged }
+  'jump-to-playlist',   // emitted when user clicks ↗ in bubble: { from, to }
 ])
 
 // ─── Editor setup ─────────────────────────────────────────────────────────────
@@ -369,6 +378,16 @@ defineExpose({
   /** Focus raw ProseMirror DOM — must be called synchronously within a user gesture on iOS */
   focusEditor: () => editor.value?.view?.dom?.focus(),
 
+  /** Remove voiceTag marks across an array of {from, to} ranges */
+  removeTagsInRanges: (ranges) => {
+    if (!editor.value) return
+    const chain = editor.value.chain().focus()
+    for (const { from, to } of ranges) {
+      chain.setTextSelection({ from, to }).unsetMark('voiceTag')
+    }
+    chain.run()
+  },
+
   /** Place cursor at pos without selecting — triggers selectionIsTagged on mobile toolbar */
   placeCursor: (pos) => {
     editor.value?.chain().focus().setTextSelection(pos).run()
@@ -491,16 +510,17 @@ defineExpose({
 /* These are ProseMirror inline decorations injected by the playback store.
    Must live in an unscoped <style> block — they are not Vue-owned DOM. */
 
-/* Sentence-level: soft purple wash matching the accent palette */
+/* Sentence-level: warm amber — easy to spot on dark background */
 .playback-highlight--sentence {
-  background-color: rgba(124, 92, 191, 0.22);
-  border-radius: 2px;
+  background-color: rgba(251, 191, 36, 0.28);
+  border-bottom: 2px solid rgba(251, 191, 36, 0.75);
+  border-radius: 2px 2px 0 0;
 }
 
-/* Word-level: gold underline + warm tint — visually distinct from sentence */
+/* Word-level: stronger amber + bolder underline */
 .playback-highlight--word {
-  background-color: rgba(251, 191, 36, 0.22);
-  border-bottom: 2px solid rgba(251, 191, 36, 0.80);
+  background-color: rgba(251, 191, 36, 0.50);
+  border-bottom: 2px solid rgba(251, 191, 36, 1.00);
   border-radius: 2px 2px 0 0;
 }
 </style>
@@ -560,6 +580,17 @@ defineExpose({
   background: transparent !important;
 }
 .role-chip--remove:hover { background: rgba(248,113,113,0.15) !important }
+
+.bubble-jump {
+  all: unset;
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  transition: background 0.12s, color 0.12s;
+}
+.bubble-jump:hover { background: rgba(124,92,191,0.2); color: var(--color-accent); }
 
 .bubble-divider {
   width: 1px;

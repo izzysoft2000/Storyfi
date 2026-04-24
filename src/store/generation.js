@@ -503,6 +503,24 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     diskDivergences.value = {}
   }
 
+  function deleteGroups(groupIds) {
+    const idSet = new Set(groupIds)
+    // Remove sentences belonging to deleted groups
+    for (const id of idSet) {
+      const group = groups.value.find(g => g.id === id)
+      if (group) {
+        for (const s of group.sentences ?? []) {
+          delete sentences.value[s.id]
+        }
+      }
+    }
+    groups.value = groups.value.filter(g => !idSet.has(g.id))
+    // Persist
+    if (projectStore.project) {
+      projectStore.project.paragraphGroups = groups.value
+    }
+  }
+
   function reset() {
     groups.value      = []
     sentences.value   = {}
@@ -520,7 +538,7 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     diskDivergences,
     progress, progressLabel,
     loadFromProject, buildGroupsFromDoc,
-    generateAll, regenerateGroup, updateGroup,
+    generateAll, regenerateGroup, updateGroup, deleteGroups,
     setDivergences, clearDivergence, clearAllDivergences,
     reset,
   }

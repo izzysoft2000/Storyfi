@@ -1,20 +1,24 @@
 <template>
   <div class="playlist-pane">
 
-    <!-- Toolbar: Generate + Export only (label + Settings moved to workspace) -->
-    <div class="playlist-toolbar">
-      <span v-if="gen.groups.length > 0" class="playlist-count">
-        {{ gen.groups.length }} segment{{ gen.groups.length !== 1 ? 's' : '' }}
-        <span class="playlist-count__time">{{ fmtTotal(totalEstimatedMs) }}</span>
-      </span>
-      <div class="toolbar-right">
-        <button
-          class="tb-btn tb-btn--primary"
-          :disabled="gen.isGenerating || (!hasTaggedSpans && gen.groups.length === 0) || !isOnline"
-          :title="!isOnline ? 'Offline — generation unavailable' : ''"
-          @click="$emit('generate')"
-        >{{ gen.isGenerating ? '⟳ Generating…' : '▶ Generate' }}</button>
-        <button class="tb-btn" :disabled="!hasReadyAudio" @click="$emit('export')">↓ Export</button>
+    <!-- Selection header -->
+    <div v-if="gen.groups.length > 0" class="playlist-sel-header">
+      <input type="checkbox" class="sel-checkbox"
+        :checked="allSelected"
+        :indeterminate.prop="someSelected && !allSelected"
+        title="Select all"
+        @change="toggleSelectAll"
+      />
+      <span class="sel-col sel-col--count">({{ gen.groups.length }})</span>
+      <span class="sel-col sel-col--time">{{ fmtTotal(totalEstimatedMs) }}</span>
+      <div v-if="someSelected" class="sel-actions">
+        <button class="sel-action-btn sel-action-btn--regen"
+          :disabled="!isOnline || gen.isGenerating"
+          @click="emit('regenerate-selected', [...selectedIds])"
+        >↺ Re-Generate ({{ selectedIds.size }})</button>
+        <button class="sel-action-btn sel-action-btn--delete"
+          @click="onDeleteSelected"
+        >✕ Delete ({{ selectedIds.size }})</button>
       </div>
     </div>
 
@@ -63,10 +67,16 @@
           v-for="(group, groupIndex) in gen.groups"
           :key="group.id"
           class="group-row"
-          :class="[`group-row--${group.stitchStatus}`, { 'group-row--playing': group.id === activeGroupId }]"
+          :class="[`group-row--${group.stitchStatus}`, { 'group-row--playing': group.id === activeGroupId, 'group-row--blink': blinkingId === group.id }]"
+          :data-group-id="group.id"
         >
           <!-- Group header -->
-          <div class="group-row__header" @click="toggleExpand(group.id)">
+          <div class="group-row__header" @click="onGroupRowClick(group, groupIndex)">
+            <input type="checkbox" class="sel-checkbox"
+              :checked="selectedIds.has(group.id)"
+              @click.stop
+              @change.stop="toggleSelect(group.id)"
+            />
             <span class="expand-btn">{{ expanded[group.id] ? '▾' : '▸' }}</span>
             <span class="group-row__role" :style="{ color: group.color, borderColor: group.color }">
               {{ group.roleLabel }}
@@ -84,35 +94,8 @@
               <span v-else-if="group.stitchStatus === 'error'"     class="status-dot status-dot--err">✕</span>
               <span v-else                                          class="status-dot status-dot--pending">○</span>
             </span>
-            <!-- Play button — only shown when group has audio -->
-            <button
-              class="group-row__play"
-              :class="{ 'group-row__play--active': group.id === activeGroupId }"
-              :disabled="group.stitchStatus !== 'ready'"
-              :title="group.id === activeGroupId ? 'Now playing' : 'Play from here'"
-              @click.stop="onGroupPlay(group, groupIndex)"
-            >
-              <!-- Animated bars: this group is active and playing -->
-              <svg v-if="group.id === activeGroupId && playback.isPlaying"
-                   viewBox="0 0 10 10" fill="currentColor" class="play-bars" aria-hidden="true">
-                <rect x="0" y="2" width="2" height="8" rx="1" class="bar bar--1"/>
-                <rect x="4" y="0" width="2" height="10" rx="1" class="bar bar--2"/>
-                <rect x="8" y="3" width="2" height="7" rx="1" class="bar bar--3"/>
-              </svg>
-              <!-- Pause icon: this group is active but paused -->
-              <svg v-else-if="group.id === activeGroupId && playback.isPaused"
-                   viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
-                <rect x="1" y="1" width="3" height="8" rx="1"/>
-                <rect x="6" y="1" width="3" height="8" rx="1"/>
-              </svg>
-              <!-- Static play triangle: not active or no audio -->
-              <svg v-else viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
-                <path d="M2 1.5l7 3.5-7 3.5V1.5z"/>
-              </svg>
-            </button>
-            <button class="group-row__regen" title="Regenerate"
-              :disabled="!isOnline"
-              @click.stop="$emit('regenerate-group', group.id)">🔄</button>
+
+
           </div>
 
           <!-- Sentence sub-rows -->
@@ -122,8 +105,10 @@
                 v-for="s in (group.sentences ?? [])"
                 :key="s.id"
                 class="sentence-row sentence-row--clickable"
-                :title="'Click to locate in editor'"
-                @click="$emit('focus-sentence', { from: s.editorFrom, to: s.editorTo })"
+                :class="{ 'sentence-row--blink': blinkingId === s.id }"
+                :data-sentence-id="s.id"
+                :title="'Click to locate in editor and seek player'"
+                @click="onSentenceClick(s, group, groupIndex)"
               >
                 <span class="sentence-row__idx">{{ s.sentenceIndex + 1 }}</span>
                 <span class="sentence-row__text">{{ truncate(s.text, 50) }}</span>
@@ -161,13 +146,32 @@ const props = defineProps({
   isOnline:       { type: Boolean, default: true },
 })
 
-defineEmits(['generate', 'regenerate-group', 'export', 'focus-sentence'])
+const emit = defineEmits(['generate', 'regenerate-selected', 'delete-selected', 'regenerate-group', 'auto-tag', 'export', 'focus-sentence'])
 
 const gen      = useGenerationStore()
 const playback = usePlaybackStore()
 const expanded = ref({})
 
 const hasReadyAudio = computed(() => gen.groups.some(g => g.stitchStatus === 'ready'))
+
+const selectedIds  = ref(new Set())
+const allSelected  = computed(() => gen.groups.length > 0 && gen.groups.every(g => selectedIds.value.has(g.id)))
+const someSelected = computed(() => gen.groups.some(g => selectedIds.value.has(g.id)))
+
+function toggleSelect(id) {
+  const s = new Set(selectedIds.value)
+  s.has(id) ? s.delete(id) : s.add(id)
+  selectedIds.value = s
+}
+function toggleSelectAll() {
+  selectedIds.value = allSelected.value ? new Set() : new Set(gen.groups.map(g => g.id))
+}
+function onDeleteSelected() {
+  if (!selectedIds.value.size) return
+  const ids = [...selectedIds.value]
+  selectedIds.value = new Set()
+  emit('delete-selected', ids)
+}
 
 // ID of the group currently under the playhead — drives row highlight + icon
 const activeGroupId = computed(() =>
@@ -180,14 +184,22 @@ function toggleExpand(id) {
   expanded.value[id] = !expanded.value[id]
 }
 
-function onGroupPlay(group, index) {
+function onGroupRowClick(group, index) {
+  toggleExpand(group.id)
+}
+
+function onSentenceClick(s, group, groupIndex) {
+  // Jump to tagged text in editor
+  if (s.editorFrom != null) {
+    emit('focus-sentence', { from: s.editorFrom, to: s.editorTo })
+  }
+
+  // Seek player to this group (or cold-start if nothing loaded yet)
   if (group.stitchStatus !== 'ready') return
-  // If already loaded (playing or paused), seek directly — avoids re-decoding all buffers
   if (playback.isPlaying || playback.isPaused) {
-    playback.seekToGroup(index)
+    playback.seekToGroup(groupIndex)
   } else {
-    // Cold start: load all stitched blobs and begin from this group
-    playback.loadAndPlay(gen.groups, index)
+    playback.loadAndPlay(gen.groups, groupIndex)
   }
 }
 
@@ -240,6 +252,29 @@ function fmtTotal(ms) {
   const s = totalSec % 60
   return `${m}:${String(s).padStart(2, '0')}`
 }
+// ── Jump to entry from editor bubble ─────────────────────────────────────────
+const blinkingId = ref(null)
+
+async function jumpTo(groupId, sentenceId) {
+  // 1. Expand the group
+  expanded.value = { ...expanded.value, [groupId]: true }
+
+  // 2. Wait a tick for the DOM to render the sentence rows
+  await new Promise(r => setTimeout(r, 60))
+
+  // 3. Find and scroll the sentence row into view
+  const selector = sentenceId
+    ? `[data-sentence-id="${sentenceId}"]`
+    : `[data-group-id="${groupId}"]`
+  const el = document.querySelector(selector)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+  // 4. Blink the row
+  blinkingId.value = sentenceId ?? groupId
+  setTimeout(() => { blinkingId.value = null }, 1400)
+}
+
+defineExpose({ jumpTo })
 </script>
 
 <style scoped>
@@ -358,11 +393,26 @@ function fmtTotal(ms) {
 
 .group-row__header {
   display: grid;
-  grid-template-columns: 14px auto 1fr auto auto auto auto auto;
+  grid-template-columns: 20px 14px auto 1fr auto auto auto auto;
   align-items: center; gap: 6px; padding: 7px 8px; cursor: pointer;
 }
 
 .expand-btn { font-size: 10px; color: var(--color-text-muted) }
+
+.playlist-sel-header {
+  display: grid; grid-template-columns: 20px auto auto 1fr;
+  align-items: center; gap: 6px; padding: 5px 8px; min-height: 32px;
+  border-bottom: 1px solid var(--color-border); background: var(--color-surface);
+}
+.sel-checkbox { width: 14px; height: 14px; accent-color: var(--color-accent); cursor: pointer; flex-shrink: 0; }
+.sel-col { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); opacity: 0.7; white-space: nowrap; }
+.sel-actions { display: flex; gap: 6px; justify-content: flex-end; grid-column: 4; }
+.sel-action-btn { all: unset; cursor: pointer; font-size: 11px; font-family: var(--font-ui); padding: 3px 9px; border-radius: 6px; white-space: nowrap; transition: background 0.12s; }
+.sel-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.sel-action-btn--regen { background: var(--color-accent); color: #fff; }
+.sel-action-btn--regen:hover:not(:disabled) { background: #6a4db0; }
+.sel-action-btn--delete { background: rgba(248,113,113,0.15); color: var(--color-error); border: 1px solid rgba(248,113,113,0.3); }
+.sel-action-btn--delete:hover:not(:disabled) { background: rgba(248,113,113,0.25); }
 
 .group-row__role {
   font-size: 10px; font-weight: 600; text-transform: uppercase;
@@ -384,13 +434,7 @@ function fmtTotal(ms) {
 }
 .group-row__status { display: flex; align-items: center }
 
-.group-row__regen {
-  background: none; border: none; cursor: pointer;
-  font-size: 12px; opacity: 0; transition: opacity 0.1s;
-  padding: 2px 4px; border-radius: 3px;
-}
-.group-row__header:hover .group-row__regen { opacity: 0.6 }
-.group-row__regen:hover { opacity: 1 !important }
+
 
 /* Status dots */
 .status-dot        { font-size: 12px }
@@ -408,6 +452,13 @@ function fmtTotal(ms) {
   padding: 4px 8px 6px 28px;
   display: flex; flex-direction: column; gap: 2px;
 }
+@keyframes playlist-blink {
+  0%, 100% { background: transparent; }
+  25%, 75% { background: rgba(251, 191, 36, 0.25); }
+}
+.group-row--blink    { animation: playlist-blink 0.7s ease 2; }
+.sentence-row--blink { animation: playlist-blink 0.7s ease 2; }
+
 .sentence-row {
   display: grid; grid-template-columns: 18px 1fr auto auto;
   align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px;
@@ -438,35 +489,12 @@ function fmtTotal(ms) {
   background: rgba(124, 92, 191, 0.07);
   border-color: rgba(124, 92, 191, 0.3) !important;
 }
+.group-row--playing > .group-row__header {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 5px;
+}
 
 /* Per-group play button */
-.group-row__play {
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: 2px 3px;
-  display: flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px;
-  opacity: 0;
-  transition: opacity 0.1s, color 0.1s, border-color 0.1s, background 0.1s;
-  flex-shrink: 0;
-}
-.group-row__play svg { width: 10px; height: 10px }
-.group-row__header:hover .group-row__play { opacity: 0.55 }
-.group-row__play:hover:not(:disabled) {
-  opacity: 1 !important;
-  color: var(--color-accent);
-  border-color: rgba(124, 92, 191, 0.3);
-  background: rgba(124, 92, 191, 0.1);
-}
-.group-row__play--active {
-  opacity: 1 !important;
-  color: var(--color-accent) !important;
-}
-.group-row__play:disabled { opacity: 0 !important; cursor: default }
-
 /* Animated playback bars (shown while group is actively playing) */
 .play-bars .bar { transform-origin: bottom }
 .play-bars .bar--1 { animation: bar-bounce 0.85s ease-in-out infinite }

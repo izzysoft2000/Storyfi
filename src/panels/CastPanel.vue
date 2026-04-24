@@ -438,6 +438,21 @@ async function previewVoice(providerId, voiceId) {
   // Stop any current playback first
   stopPreview()
 
+  // Browser provider — use SpeechSynthesis directly, no API key needed
+  if (providerId === 'browser') {
+    speechSynthesis.cancel()
+    const utt = new SpeechSynthesisUtterance(PREVIEW_TEXT)
+    if (voiceId) {
+      const v = speechSynthesis.getVoices().find(v => v.voiceURI === voiceId)
+      if (v) utt.voice = v
+    }
+    playingPreviewId.value = voiceId
+    utt.onend = () => { playingPreviewId.value = null }
+    utt.onerror = () => { playingPreviewId.value = null }
+    speechSynthesis.speak(utt)
+    return
+  }
+
   const cacheKey = `${providerId}_${voiceId}`
 
   // Check cache
@@ -488,6 +503,7 @@ async function previewVoice(providerId, voiceId) {
 }
 
 function stopPreview() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel()
   if (_previewAudio) {
     _previewAudio.pause()
     _previewAudio.onended = null

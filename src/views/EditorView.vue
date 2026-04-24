@@ -108,6 +108,7 @@
               @auto-tag-result="onAutoTagResult"
               @doc-updated="onDocUpdated"
               @selection-change="onMobileSelectionChange"
+              @jump-to-playlist="onJumpToPlaylist"
             />
           </div>
         </div>
@@ -115,6 +116,7 @@
         <!-- ── Playlist panel ── -->
         <div class="m-panel">
           <PlaylistPane
+            :ref="el => { if (el) playlistRef = el }"
             :has-tagged-spans="taggedSpans.length > 0"
             :tagged-spans="taggedSpans"
             :is-online="isOnline"
@@ -123,6 +125,9 @@
             @open-settings="settingsRef?.open()"
             @export="onExport"
             @focus-sentence="onFocusSentence"
+            @jump-to-playlist="onJumpToPlaylist"
+            @regenerate-selected="onRegenerateSelected"
+            @delete-selected="onDeleteSelected"
           />
         </div>
 
@@ -241,6 +246,20 @@
                 <span class="panel-badge">{{ store.cast.length }}/10</span>
               </template>
 
+              <!-- Playlist: Generate + Export in panel bar -->
+              <template v-if="panelId === 'playlist'" #bar-right>
+                <button
+                  class="panel-tb-btn panel-tb-btn--primary"
+                  :disabled="gen.isGenerating || (!taggedSpans.length && !gen.groups.length) || !isOnline"
+                  @click="onGenerate"
+                >{{ gen.isGenerating ? '⟳ Generating…' : '▶ Generate' }}</button>
+                <button
+                  class="panel-tb-btn"
+                  :disabled="!gen.groups.some(g => g.stitchStatus === 'ready')"
+                  @click="onExport"
+                >↓ Export</button>
+              </template>
+
               <!-- Editor toolbar in panel bar -->
               <template v-if="panelId === 'editor'" #bar-right>
                 <button class="panel-tb-btn" title="Import Markdown" @click="onImport">
@@ -277,6 +296,7 @@
               />
               <PlaylistPane
                 v-else-if="panelId === 'playlist'"
+                :ref="el => { if (el) playlistRef = el }"
                 :has-tagged-spans="taggedSpans.length > 0"
                 :tagged-spans="taggedSpans"
                 :is-online="isOnline"
@@ -285,6 +305,8 @@
                 @open-settings="settingsRef?.open()"
                 @export="onExport"
                 @focus-sentence="onFocusSentence"
+                @regenerate-selected="onRegenerateSelected"
+                @delete-selected="onDeleteSelected"
               />
               <StoryEditor
                 v-else-if="panelId === 'editor'"
@@ -296,6 +318,7 @@
                 @import-markdown="onMarkdownImported"
                 @auto-tag-result="onAutoTagResult"
                 @doc-updated="onDocUpdated"
+                @jump-to-playlist="onJumpToPlaylist"
               />
             </DockablePanel>
 
@@ -427,6 +450,7 @@ const {
 
 // ─── Refs ─────────────────────────────────────────────────────────────────────
 const editorRef       = ref(null)
+let   playlistRef     = null   // set via :ref callback on desktop, ref= on mobile
 
 // Stable named ref callback — inline arrow in v-for triggers a Vue teardown
 // timing bug where the reactive scope is partially cleaned up before the
@@ -605,6 +629,64 @@ function onMobileSelectionChange({ hasSelection, selectionIsTagged, activeRoleId
 function onMobileTagRole(role)    { editorRef.value?.applyVoiceTag?.(role) }
 function onRemoveTag()            { editorRef.value?.removeVoiceTag?.() }
 function onAutoTagSelection()     { editorRef.value?.autoTagSelection?.() }
+
+// ── Selection actions from PlaylistPane ──────────────────────────────────────
+function onDeleteSelected(groupIds) {
+  const ranges = []
+  for (const id of groupIds) {
+    const group = gen.groups.find(g => g.id === id)
+    if (!group) continue
+    for (const s of group.sentences ?? []) {
+      if (s.editorFrom != null && s.editorTo != null)
+        ranges.push({ from: s.editorFrom, to: s.editorTo })
+    }
+  }
+  if (ranges.length) editorRef.value?.removeTagsInRanges?.(ranges)
+  gen.deleteGroups(groupIds)
+}
+
+async function onRegenerateSelected(groupIds) {
+  const doc = editorRef.value?.getDoc?.() ?? null
+  for (const id of groupIds) {
+    const group = gen.groups.find(g => g.id === id)
+    const role  = store.cast.find(r => r.id === group?.roleId)
+    await gen.regenerateGroup(id, {
+      providerId: role?.voiceAssignment?.providerId ?? 'minimax',
+      doc,
+      onFolderPrompt: () => {},
+    })
+  }
+}
+
+// ── Jump to playlist from editor bubble ──────────────────────────────────────
+function onJumpToPlaylist({ from }) {
+  // Find the group and sentence whose editorFrom/editorTo range contains `from`
+  let targetGroupId   = null
+  let targetSentenceId = null
+
+  for (const group of gen.groups) {
+    for (const s of group.sentences ?? []) {
+      if (s.editorFrom != null && s.editorTo != null &&
+          from >= s.editorFrom && from <= s.editorTo) {
+        targetGroupId    = group.id
+        targetSentenceId = s.id
+        break
+      }
+    }
+    if (targetGroupId) break
+  }
+
+  if (!targetGroupId) return
+
+  // On mobile: switch to playlist panel first
+  if (isMobile.value && activePanel.value !== 'playlist') {
+    setActivePanel('playlist')
+  }
+
+  nextTick(() => {
+    playlistRef?.jumpTo(targetGroupId, targetSentenceId)
+  })
+}
 
 // ── Focus sentence from playlist subentry click ───────────────────────────────
 async function onFocusSentence({ from, to }) {
@@ -845,6 +927,16 @@ async function onGenerate() {
     toastRef.value?.show('Tag some text first, then generate.', 'warning'); return
   }
 
+  // Warn if any cast members have no voice assigned
+  const unassigned = store.cast.filter(r => !r.voiceAssignment?.voiceId)
+  if (unassigned.length > 0) {
+    const names = unassigned.map(r => r.label).join(', ')
+    const proceed = window.confirm(
+      `${unassigned.length} cast member${unassigned.length !== 1 ? 's have' : ' has'} no voice assigned:\n\n${names}\n\nThese segments will fail. Continue anyway?`
+    )
+    if (!proceed) return
+  }
+
   const { getApiKey } = await import('@/store/db.js')
   const keyRecord = await getApiKey(activeProvider.value)
   if (!keyRecord && activeProvider.value !== 'browser') {
@@ -1018,6 +1110,9 @@ function goLibrary() { emit('go-library') }
 .panel-tb-btn.active { background: rgba(124,92,191,0.18); border-color: var(--color-accent); color: var(--color-accent) }
 .panel-tb-btn--fmt  { padding: 2px 6px; font-size: 12px }
 .panel-tb-btn--break { border-color: var(--color-border); color: var(--color-accent); font-family: var(--font-mono) }
+.panel-tb-btn--primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.panel-tb-btn--primary:hover:not(:disabled) { background: #6a4db0; }
+.panel-tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .panel-tb-btn--break:hover { background: rgba(124,92,191,0.12); border-color: var(--color-accent) }
 
 .panel-tb-divider {

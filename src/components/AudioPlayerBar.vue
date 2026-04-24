@@ -124,7 +124,7 @@ function drawWaveform() {
   }
 
   const ctx  = canvas.getContext('2d')
-  ctx.scale(dpr, dpr)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)   // reset + scale in one call — prevents scale accumulation on repeated redraws
   ctx.clearRect(0, 0, W, H)
 
   const data     = playback.waveformData   // Float32Array | null getter
@@ -206,9 +206,22 @@ function msFromX(clientX) {
 }
 
 function scrubTo(ms) {
-  if (!playback.hasAudio && !hasReadyAudio.value) return
-  if (playback.isPlaying || playback.isPaused) playback.seekToMs(ms)
-  else playback.currentMs = ms
+  if (!hasReadyAudio.value) return
+  if (playback.isPlaying || playback.isPaused) {
+    // Already loaded — seek directly
+    playback.seekToMs(ms)
+  } else {
+    // Cold start — find which group this ms position falls in and load from there
+    let elapsed  = 0
+    let startIdx = 0
+    for (let i = 0; i < props.groups.length; i++) {
+      const dur = props.groups[i].totalDurationMs ?? 0
+      if (elapsed + dur > ms) { startIdx = i; break }
+      elapsed  += dur
+      startIdx  = i
+    }
+    playback.loadAndPlay(props.groups, startIdx)
+  }
 }
 
 function onCanvasMouseDown(e) {
