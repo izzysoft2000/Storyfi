@@ -72,7 +72,7 @@
               {{ group.roleLabel }}
             </span>
             <span class="group-row__text">{{ truncate(firstSentenceText(group), 44) }}</span>
-            <span class="group-row__sentences">{{ (group.sentences ?? []).length }}s</span>
+            <span class="group-row__sentences">({{ (group.sentences ?? []).length }})</span>
             <span class="group-row__duration">
               {{ fmtGroup(group) }}
             </span>
@@ -225,7 +225,8 @@ function estimatedMs(group) {
 function fmtGroup(group) {
   const ms       = estimatedMs(group)
   const isActual = group.totalDurationMs != null
-  return isActual ? fmt(ms) : '~' + fmt(ms)
+  const secs     = Math.ceil(ms / 1000)
+  return (isActual ? '' : '~') + secs + 's'
 }
 
 const totalEstimatedMs = computed(() =>
@@ -234,7 +235,7 @@ const totalEstimatedMs = computed(() =>
 
 function fmtTotal(ms) {
   if (!ms) return ''
-  const totalSec = Math.round(ms / 1000)
+  const totalSec = Math.ceil(ms / 1000)
   const m = Math.floor(totalSec / 60)
   const s = totalSec % 60
   return `${m}:${String(s).padStart(2, '0')}`

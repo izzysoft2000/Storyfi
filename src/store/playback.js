@@ -312,19 +312,30 @@ export const usePlaybackStore = defineStore('playback', {
           let hasAudio = false
 
           try {
-            const blob = await getAudioStitched(group.id)
-            if (blob) {
-              const arrayBuf = await blob.arrayBuffer()
-              // decodeAudioData can hang on certain MP3s — wrapped in a 10s timeout
-              const audioBuf = await Promise.race([
-                _audioCtx.decodeAudioData(arrayBuf),
-                new Promise((_, rej) =>
-                  setTimeout(() => rej(new Error('decodeAudioData timeout')), 10_000)
-                ),
-              ])
-              _buffers[i] = audioBuf
-              ms += audioBuf.duration * 1000
+            if (group.livePlayback) {
+              // Browser provider — no audio blob, use SpeechSynthesis at play time
+              // Store a sentinel so _startGroupAtOffset knows to use live speech
+              const estimatedMs = (group.sentences ?? []).reduce(
+                (sum, s) => sum + (s.durationMs ?? Math.ceil((s.text?.length ?? 0) / 15 * 1000)), 0
+              )
+              _buffers[i] = { _browserLive: true, group }
+              ms += estimatedMs
               hasAudio = true
+            } else {
+              const blob = await getAudioStitched(group.id)
+              if (blob) {
+                const arrayBuf = await blob.arrayBuffer()
+                // decodeAudioData can hang on certain MP3s — wrapped in a 10s timeout
+                const audioBuf = await Promise.race([
+                  _audioCtx.decodeAudioData(arrayBuf),
+                  new Promise((_, rej) =>
+                    setTimeout(() => rej(new Error('decodeAudioData timeout')), 10_000)
+                  ),
+                ])
+                _buffers[i] = audioBuf
+                ms += audioBuf.duration * 1000
+                hasAudio = true
+              }
             }
           } catch (err) {
             console.warn(`[playback] Could not decode group ${group.id}:`, err)
@@ -466,6 +477,43 @@ export const usePlaybackStore = defineStore('playback', {
         return
       }
 
+      // ── Browser live playback via SpeechSynthesis ──────────────────────────
+      if (buf._browserLive) {
+        const group = buf.group
+        const sentences = group.sentences ?? []
+        this.currentGroupIdx = groupIdx
+        this.isPlaying = true
+        this.isPaused = false
+        this._startRaf()
+
+        let si = 0
+        const speakNext = () => {
+          if (!this.isPlaying || si >= sentences.length) {
+            if (this.isPlaying) this._startGroup(groupIdx + 1)
+            return
+          }
+          const sentence = sentences[si++]
+          const role     = group
+          const utt = new SpeechSynthesisUtterance(sentence.text)
+          utt.rate  = 1.0
+
+          // Apply the voice from the group's voiceURI if available
+          if (group._voiceURI) {
+            const v = speechSynthesis.getVoices().find(v => v.voiceURI === group._voiceURI)
+            if (v) utt.voice = v
+          }
+
+          utt.onend   = speakNext
+          utt.onerror = speakNext // skip on error, keep playing
+          speechSynthesis.speak(utt)
+        }
+
+        speechSynthesis.cancel()
+        speakNext()
+        return
+      }
+
+      // ── Normal AudioBuffer playback ────────────────────────────────────────
       const offsetSec = Math.max(0, offsetMs / 1000)
       const src = _audioCtx.createBufferSource()
       src.buffer = buf
@@ -490,6 +538,8 @@ export const usePlaybackStore = defineStore('playback', {
     },
 
     _stopSourceNode() {
+      // Stop SpeechSynthesis if it was playing a browser live group
+      if ('speechSynthesis' in window) speechSynthesis.cancel()
       if (_source) {
         try {
           _source.onended = null // prevent chaining

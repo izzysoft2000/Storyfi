@@ -148,7 +148,9 @@ export const useGenerationStore = defineStore('generation', () => {
         }
       }
 
-      const groupId = existing?.id ?? `group_${groupIndex}_${uuid()}`
+      const groupId   = existing?.id ?? `group_${groupIndex}_${uuid()}`
+      const role      = projectStore.cast.find(r => r.id === sg.roleId)
+      const providerId = role?.voiceAssignment?.providerId ?? 'browser'
       sentenceList.forEach(s => { s.paragraphGroupId = groupId })
 
       return {
@@ -157,6 +159,9 @@ export const useGenerationStore = defineStore('generation', () => {
         roleId:              sg.roleId,
         roleLabel:           sg.roleLabel,
         color:               sg.color,
+        providerId,
+        livePlayback:        providerId === 'browser',
+        _voiceURI:           providerId === 'browser' ? (role?.voiceAssignment?.voiceId ?? null) : null,
         order:               groupIndex + 1,
         sentences:           sentenceList,
         sentenceIds:         sentenceList.map(s => s.id),
@@ -260,6 +265,19 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     }
 
     try {
+      // Browser provider: no audio blob — estimate duration and mark ready for live playback
+      if (targetProviderId === 'browser') {
+        const durationMs = Math.ceil((sentence.text.length / 15) * 1000)
+        updateSentence(sentence.id, {
+          status:      'ready',
+          audioKey:    null,
+          durationMs,
+          wordTimings: null,
+        })
+        doneCount.value++
+        return
+      }
+
       // Pass the role-specific settings (Pitch, Rate, Vol, Emotion) to the provider
       const result = await provider.generate({
         text:     sentence.text,
