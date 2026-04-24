@@ -147,7 +147,7 @@ function buildWaveformData(buffers, bars) {
   let totalSamples = 0
 
   for (const buf of buffers) {
-    if (!buf) continue
+    if (!buf || buf._browserLive) continue  // skip browser live sentinels
     const nCh = buf.numberOfChannels
     const len = buf.length
     const merged = new Float32Array(len)
@@ -313,8 +313,6 @@ export const usePlaybackStore = defineStore('playback', {
 
           try {
             if (group.livePlayback) {
-              // Browser provider — no audio blob, use SpeechSynthesis at play time
-              // Store a sentinel so _startGroupAtOffset knows to use live speech
               const estimatedMs = (group.sentences ?? []).reduce(
                 (sum, s) => sum + (s.durationMs ?? Math.ceil((s.text?.length ?? 0) / 15 * 1000)), 0
               )
@@ -325,7 +323,6 @@ export const usePlaybackStore = defineStore('playback', {
               const blob = await getAudioStitched(group.id)
               if (blob) {
                 const arrayBuf = await blob.arrayBuffer()
-                // decodeAudioData can hang on certain MP3s — wrapped in a 10s timeout
                 const audioBuf = await Promise.race([
                   _audioCtx.decodeAudioData(arrayBuf),
                   new Promise((_, rej) =>
@@ -485,7 +482,6 @@ export const usePlaybackStore = defineStore('playback', {
         this.isPlaying = true
         this.isPaused = false
         this._startRaf()
-
         let si = 0
         const speakNext = () => {
           if (!this.isPlaying || si >= sentences.length) {
@@ -493,21 +489,16 @@ export const usePlaybackStore = defineStore('playback', {
             return
           }
           const sentence = sentences[si++]
-          const role     = group
           const utt = new SpeechSynthesisUtterance(sentence.text)
-          utt.rate  = 1.0
-
-          // Apply the voice from the group's voiceURI if available
+          utt.rate = 1.0
           if (group._voiceURI) {
             const v = speechSynthesis.getVoices().find(v => v.voiceURI === group._voiceURI)
             if (v) utt.voice = v
           }
-
           utt.onend   = speakNext
-          utt.onerror = speakNext // skip on error, keep playing
+          utt.onerror = speakNext
           speechSynthesis.speak(utt)
         }
-
         speechSynthesis.cancel()
         speakNext()
         return
@@ -518,27 +509,20 @@ export const usePlaybackStore = defineStore('playback', {
       const src = _audioCtx.createBufferSource()
       src.buffer = buf
       src.connect(_audioCtx.destination)
-
-      // onended fires when the buffer finishes naturally.
-      // Guard with isPlaying to avoid chaining after explicit stop().
       src.onended = () => {
         if (this.isPlaying) this._startGroup(groupIdx + 1)
       }
-
       _source = src
       _startedAtCtx = _audioCtx.currentTime - offsetSec
       _segmentOffsetMs = this.groupOffsets[groupIdx]?.startMs ?? 0
-
       this.currentGroupIdx = groupIdx
       this.isPlaying = true
       this.isPaused = false
-
       src.start(0, offsetSec)
       this._startRaf()
     },
 
     _stopSourceNode() {
-      // Stop SpeechSynthesis if it was playing a browser live group
       if ('speechSynthesis' in window) speechSynthesis.cancel()
       if (_source) {
         try {

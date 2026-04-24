@@ -148,8 +148,8 @@ export const useGenerationStore = defineStore('generation', () => {
         }
       }
 
-      const groupId   = existing?.id ?? `group_${groupIndex}_${uuid()}`
-      const role      = projectStore.cast.find(r => r.id === sg.roleId)
+      const groupId    = existing?.id ?? `group_${groupIndex}_${uuid()}`
+      const role       = projectStore.cast.find(r => r.id === sg.roleId)
       const providerId = role?.voiceAssignment?.providerId ?? 'browser'
       sentenceList.forEach(s => { s.paragraphGroupId = groupId })
 
@@ -219,6 +219,7 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
   const apiKeys = {}
   try {
     for (const pId of usedProviderIds) {
+      if (pId === 'browser') { apiKeys[pId] = null; continue }
       apiKeys[pId] = await resolveApiKey(pId)
     }
   } catch (err) {
@@ -265,16 +266,13 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     }
 
     try {
-      // Browser provider: no audio blob — estimate duration and mark ready for live playback
+      // Browser provider: SpeechSynthesis at play time — no blob, estimate duration
       if (targetProviderId === 'browser') {
         const durationMs = Math.ceil((sentence.text.length / 15) * 1000)
-        updateSentence(sentence.id, {
-          status:      'ready',
-          audioKey:    null,
-          durationMs,
-          wordTimings: null,
-        })
+        updateSentence(sentence.id, { status: 'ready', audioKey: null, durationMs, wordTimings: null })
         doneCount.value++
+        const group = groups.value.find(g => g.id === sentence.paragraphGroupId)
+        if (group) await maybeStitchGroup(group, provider)
         return
       }
 
@@ -338,6 +336,18 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     })
 
     if (!allReady) return
+
+    // Browser groups use SpeechSynthesis — no stitching needed, mark ready immediately
+    if (group.livePlayback) {
+      const readySentences = groupSentences.map(s => sentences.value[s.id])
+      const timings = computeSentenceTimings(readySentences)
+      timings.forEach((t, i) => {
+        updateSentence(readySentences[i].id, { startMs: t.startMs, endMs: t.endMs })
+      })
+      const totalDurationMs = timings[timings.length - 1]?.endMs ?? 0
+      updateGroup(group.id, { stitchStatus: 'ready', stitchedAudioKey: null, totalDurationMs })
+      return
+    }
 
     // Update group status
     updateGroup(group.id, { stitchStatus: 'stitching' })

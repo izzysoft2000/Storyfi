@@ -1052,6 +1052,15 @@ function modelCostLabel(model) {
   flex-wrap: wrap;
   gap: 5px;
   margin-bottom: 8px;
+  /* Cap at ~3.5 rows so users can see there's more to scroll to */
+  max-height: calc(3.5 * (20px + 5px));
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  padding-right: 2px;
+  /* Fade bottom edge to hint at scrollability */
+  mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
 }
 
 .lang-filter--gender {
