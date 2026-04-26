@@ -61,6 +61,19 @@
         </svg>
       </button>
 
+      <!-- Follow mode toggle — tracks active sentence in playlist -->
+      <button
+        class="player-btn player-btn--follow"
+        :class="{ 'player-btn--follow-on': playback.followMode }"
+        :title="playback.followMode ? 'Following playlist (click to disable)' : 'Follow playlist'"
+        @click="playback.followMode = !playback.followMode"
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M3 4a1 1 0 000 2h14a1 1 0 100-2H3zm0 5a1 1 0 000 2h8a1 1 0 100-2H3zm0 5a1 1 0 000 2h5a1 1 0 100-2H3z"/>
+          <circle cx="16" cy="14" r="3" class="follow-dot"/>
+        </svg>
+      </button>
+
       <span class="player-time player-time--right">{{ playback.totalTimeDisplay }}</span>
 
     </div>
@@ -351,6 +364,20 @@ function onCanvasTouch(e) {
   border-color: var(--color-border, rgba(255 255 255 / 0.08));
   color: var(--color-text-muted, rgba(255 255 255 / 0.25));
 }
+
+.player-btn--follow {
+  width: 28px; height: 28px; padding: 0;
+  color: var(--color-text-muted);
+  opacity: 0.35;
+}
+.player-btn--follow:hover { opacity: 0.7; color: rgba(251, 191, 36, 0.8); }
+.player-btn--follow svg { width: 14px; height: 14px; }
+.player-btn--follow-on {
+  opacity: 1 !important;
+  color: rgba(251, 191, 36, 1.0);
+}
+.player-btn--follow-on .follow-dot { fill: rgba(251, 191, 36, 1.0); }
+.follow-dot { fill: currentColor; }
 
 /* ── Spinner ────────────────────────────────────────────────────────────────── */
 .player-spinner { animation: player-spin 0.8s linear infinite }

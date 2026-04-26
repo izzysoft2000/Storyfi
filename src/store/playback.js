@@ -75,13 +75,24 @@ const WAVEFORM_BARS = 200
 function findCurrentSentence(group, groupLocalMs) {
   const sentences = group?.sentences
   if (!sentences?.length) return null
-  for (const s of sentences) {
-    if (groupLocalMs >= (s.startMs ?? 0) && groupLocalMs < (s.endMs ?? Infinity)) {
-      return s
+
+  const hasTiming = sentences.some(s => s.startMs != null)
+  if (hasTiming) {
+    for (const s of sentences) {
+      if (groupLocalMs >= (s.startMs ?? 0) && groupLocalMs < (s.endMs ?? Infinity)) {
+        return s
+      }
     }
+    return sentences[sentences.length - 1] ?? null
   }
-  // Past end — return last sentence (handles duration float drift)
-  return sentences[sentences.length - 1] ?? null
+
+  // Fallback: no timing yet — distribute evenly by estimated duration
+  const totalDur = group.totalDurationMs || 1
+  const idx = Math.min(
+    Math.floor((groupLocalMs / totalDur) * sentences.length),
+    sentences.length - 1
+  )
+  return sentences[idx] ?? null
 }
 
 /**
@@ -220,6 +231,9 @@ export const usePlaybackStore = defineStore('playback', {
 
     /** sentenceId of the sentence currently under the playhead — for row highlighting */
     currentSentenceId: null,
+
+    /** Whether the playlist should auto-scroll/expand to track the playing sentence */
+    followMode: true,
 
     /** Master timeline position in ms — updated every RAF tick */
     currentMs: 0,
@@ -425,17 +439,24 @@ export const usePlaybackStore = defineStore('playback', {
     seekToMs(ms) {
       if (!_groups) return
       const offset = this.groupOffsets.find(
-        (o) => o?.hasAudio && ms >= o.startMs && ms <= o.endMs
-      )
+        (o) => o?.hasAudio && ms >= o.startMs && ms < o.endMs
+      ) ?? this.groupOffsets.filter(o => o?.hasAudio).at(-1)  // clamp to last group
       if (!offset) return
 
       const offsetInGroup = Math.max(0, ms - offset.startMs)
 
-      if (this.isPlaying || this.isPaused) {
+      if (this.isPlaying) {
         if (_audioCtx?.state === 'suspended') _audioCtx.resume()
         this._startGroupAtOffset(offset.groupIdx, offsetInGroup)
+      } else if (this.isPaused) {
+        this._stopSourceNode()
+        this.currentMs       = ms
+        this.currentGroupIdx = offset.groupIdx
+        _startedAtCtx        = (_audioCtx?.currentTime ?? 0) - offsetInGroup / 1000
+        _segmentOffsetMs     = offset.startMs
+        this._syncHighlight()
       } else {
-        this.currentMs = ms
+        this.currentMs       = ms
         this.currentGroupIdx = offset.groupIdx
       }
     },
@@ -476,12 +497,20 @@ export const usePlaybackStore = defineStore('playback', {
 
       // ── Browser live playback via SpeechSynthesis ──────────────────────────
       if (buf._browserLive) {
-        const group = buf.group
+        const group    = buf.group
         const sentences = group.sentences ?? []
+        const groupOffset = this.groupOffsets[groupIdx]
+
         this.currentGroupIdx = groupIdx
         this.isPlaying = true
-        this.isPaused = false
+        this.isPaused  = false
+
+        // Anchor the RAF clock to this group so currentMs is correct
+        _segmentOffsetMs = groupOffset?.startMs ?? 0
+        _startedAtCtx    = _audioCtx?.currentTime ?? 0
+
         this._startRaf()
+
         let si = 0
         const speakNext = () => {
           if (!this.isPlaying || si >= sentences.length) {
@@ -489,6 +518,15 @@ export const usePlaybackStore = defineStore('playback', {
             return
           }
           const sentence = sentences[si++]
+
+          // Update currentMs + currentSentenceId directly — SpeechSynthesis doesn't
+          // give real-time position, so we drive highlight from sentence boundaries
+          const sentenceAbsMs = _segmentOffsetMs + (sentence.startMs ?? 0)
+          this.currentMs        = sentenceAbsMs
+          this.currentSentenceId = sentence.id
+          // Re-anchor RAF so elapsed time counts from this sentence's start
+          _startedAtCtx  = (_audioCtx?.currentTime ?? 0) - (sentence.startMs ?? 0) / 1000
+
           const utt = new SpeechSynthesisUtterance(sentence.text)
           utt.rate = 1.0
           if (group._voiceURI) {

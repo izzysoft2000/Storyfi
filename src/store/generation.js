@@ -343,6 +343,9 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
       const timings = computeSentenceTimings(readySentences)
       timings.forEach((t, i) => {
         updateSentence(readySentences[i].id, { startMs: t.startMs, endMs: t.endMs })
+        // Write back into group.sentences objects too — _syncHighlight reads from there
+        const gs = group.sentences[i]
+        if (gs) { gs.startMs = t.startMs; gs.endMs = t.endMs }
       })
       const totalDurationMs = timings[timings.length - 1]?.endMs ?? 0
       updateGroup(group.id, { stitchStatus: 'ready', stitchedAudioKey: null, totalDurationMs })
@@ -374,6 +377,9 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
       const timings = computeSentenceTimings(readySentences)
       timings.forEach((t, i) => {
         updateSentence(readySentences[i].id, { startMs: t.startMs, endMs: t.endMs })
+        // Write back into group.sentences objects too — _syncHighlight reads from there
+        const gs = group.sentences[i]
+        if (gs) { gs.startMs = t.startMs; gs.endMs = t.endMs }
       })
       const totalDurationMs = timings[timings.length - 1]?.endMs ?? 0
 
@@ -503,6 +509,70 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     diskDivergences.value = {}
   }
 
+  // Regenerate specific sentences (by ID). Re-stitches their groups after.
+  async function regenerateSentences(sentenceIds, { doc, onFolderPrompt }) {
+    if (!doc || !sentenceIds?.length) return
+    const idSet = new Set(sentenceIds)
+
+    // Find affected groups
+    const affectedGroups = groups.value.filter(g =>
+      g.sentences?.some(s => idSet.has(s.id))
+    )
+
+    for (const group of affectedGroups) {
+      const role = projectStore.cast.find(r => r.id === group.roleId)
+      const providerId = role?.voiceAssignment?.providerId ?? 'browser'
+
+      // Reset only the selected sentences in this group
+      for (const s of group.sentences ?? []) {
+        if (idSet.has(s.id)) {
+          updateSentence(s.id, {
+            status: 'pending', audioKey: null, durationMs: null,
+            startMs: null, endMs: null, wordTimings: null, errorMessage: null,
+          })
+          if (s) { s.startMs = null; s.endMs = null }
+        }
+      }
+      // Reset group stitch so it re-stitches after sentences complete
+      updateGroup(group.id, {
+        stitchStatus: 'pending', stitchedAudioKey: null,
+        totalDurationMs: null, startMs: null, endMs: null,
+      })
+    }
+
+    // Run full pipeline — only pending sentences get processed
+    await generateAll({ providerId: 'browser', charLimit: 250, doc, onFolderPrompt })
+  }
+
+  // Delete specific sentences by ID. Re-stitches affected groups.
+  function deleteSentences(sentenceIds) {
+    const idSet = new Set(sentenceIds)
+
+    for (const group of groups.value) {
+      const toDelete = group.sentences?.filter(s => idSet.has(s.id)) ?? []
+      if (!toDelete.length) continue
+
+      const remaining = group.sentences.filter(s => !idSet.has(s.id))
+
+      if (remaining.length === 0) {
+        // All sentences removed — delete whole group
+        deleteGroups([group.id])
+      } else {
+        // Partial delete — update group sentences, reset stitch
+        group.sentences = remaining
+        group.sentenceIds = remaining.map(s => s.id)
+        for (const s of toDelete) delete sentences.value[s.id]
+        updateGroup(group.id, {
+          stitchStatus: 'pending', stitchedAudioKey: null, totalDurationMs: null,
+        })
+      }
+    }
+
+    if (projectStore.project) {
+      projectStore.project.paragraphGroups = groups.value
+    }
+  }
+
   function deleteGroups(groupIds) {
     const idSet = new Set(groupIds)
     // Remove sentences belonging to deleted groups
@@ -538,7 +608,8 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     diskDivergences,
     progress, progressLabel,
     loadFromProject, buildGroupsFromDoc,
-    generateAll, regenerateGroup, updateGroup, deleteGroups,
+    generateAll, regenerateGroup, regenerateSentences,
+    updateGroup, deleteGroups, deleteSentences,
     setDivergences, clearDivergence, clearAllDivergences,
     reset,
   }

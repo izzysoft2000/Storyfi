@@ -631,31 +631,25 @@ function onRemoveTag()            { editorRef.value?.removeVoiceTag?.() }
 function onAutoTagSelection()     { editorRef.value?.autoTagSelection?.() }
 
 // ── Selection actions from PlaylistPane ──────────────────────────────────────
-function onDeleteSelected(groupIds) {
+function onDeleteSelected(sentenceIds) {
   const ranges = []
-  for (const id of groupIds) {
-    const group = gen.groups.find(g => g.id === id)
-    if (!group) continue
+  const idSet  = new Set(sentenceIds)
+  for (const group of gen.groups) {
     for (const s of group.sentences ?? []) {
-      if (s.editorFrom != null && s.editorTo != null)
+      if (idSet.has(s.id) && s.editorFrom != null && s.editorTo != null)
         ranges.push({ from: s.editorFrom, to: s.editorTo })
     }
   }
   if (ranges.length) editorRef.value?.removeTagsInRanges?.(ranges)
-  gen.deleteGroups(groupIds)
+  gen.deleteSentences(sentenceIds)
 }
 
-async function onRegenerateSelected(groupIds) {
+async function onRegenerateSelected(sentenceIds) {
   const doc = editorRef.value?.getDoc?.() ?? null
-  for (const id of groupIds) {
-    const group = gen.groups.find(g => g.id === id)
-    const role  = store.cast.find(r => r.id === group?.roleId)
-    await gen.regenerateGroup(id, {
-      providerId: role?.voiceAssignment?.providerId ?? 'minimax',
-      doc,
-      onFolderPrompt: () => {},
-    })
-  }
+  await gen.regenerateSentences(sentenceIds, {
+    doc,
+    onFolderPrompt: () => {},
+  })
 }
 
 // ── Jump to playlist from editor bubble ──────────────────────────────────────
@@ -839,19 +833,16 @@ function applyAutoTagQueue(result, source = 'doc') {
   })
 }
 
-function onAutoTag() {
+async function onAutoTag() {
   if (!editorRef.value) return
 
-  // When cast is empty, buildAutoTagOperations bails early (roles.length === 0).
-  // Instead, do a raw label-discovery scan on the doc text to find [LABEL] patterns,
-  // create roles for them, then run the full tag pass with the populated cast.
   if (store.cast.length === 0) {
     const doc = editorRef.value.getDoc?.()
     if (!doc) return
     const LABEL_RE = /\[([^\]]+)\]/g
     const labels = new Set()
     doc.descendants(node => {
-      if (node.type.name === 'table') return false  // skip table metadata
+      if (node.type.name === 'table') return false
       if (!node.isText) return
       for (const m of node.text.matchAll(LABEL_RE)) labels.add(m[1].trim())
     })
@@ -859,7 +850,8 @@ function onAutoTag() {
       toastRef.value?.show('No [LABEL] patterns found in script.', 'warning', 3500)
       return
     }
-    for (const label of labels) store.addRole(label)
+    for (const label of labels) await store.addRole(label)
+    await nextTick()
     toastRef.value?.show(
       `Added ${labels.size} cast member${labels.size !== 1 ? 's' : ''} from script.`,
       'success', 3500
@@ -872,8 +864,9 @@ function onAutoTag() {
   for (const label of firstPass.unmatched) {
     const clean = label.replace(/^\[|\]$/g, '').trim()
     const alreadyExists = store.cast.some(r => r.label.trim().toLowerCase() === clean.toLowerCase())
-    if (!alreadyExists) { store.addRole(clean); newRolesAdded++ }
+    if (!alreadyExists) { await store.addRole(clean); newRolesAdded++ }
   }
+  if (newRolesAdded > 0) await nextTick()
   const result = newRolesAdded > 0 ? editorRef.value.applyAutoTag(store.cast) : firstPass
   if (newRolesAdded > 0) {
     toastRef.value?.show(

@@ -73,9 +73,10 @@
           <!-- Group header -->
           <div class="group-row__header" @click="onGroupRowClick(group, groupIndex)">
             <input type="checkbox" class="sel-checkbox"
-              :checked="selectedIds.has(group.id)"
+              :checked="groupAllSelected(group)"
+              :indeterminate.prop="groupSomeSelected(group) && !groupAllSelected(group)"
               @click.stop
-              @change.stop="toggleSelect(group.id)"
+              @change.stop="toggleSelectGroup(group)"
             />
             <span class="expand-btn">{{ expanded[group.id] ? '▾' : '▸' }}</span>
             <span class="group-row__role" :style="{ color: group.color, borderColor: group.color }">
@@ -105,11 +106,20 @@
                 v-for="s in (group.sentences ?? [])"
                 :key="s.id"
                 class="sentence-row sentence-row--clickable"
-                :class="{ 'sentence-row--blink': blinkingId === s.id }"
+                :class="{
+                  'sentence-row--blink':  blinkingId === s.id,
+                  'sentence-row--active': playback.followMode && s.id === playback.currentSentenceId,
+                  'sentence-row--selected': selectedIds.has(s.id),
+                }"
                 :data-sentence-id="s.id"
                 :title="'Click to locate in editor and seek player'"
                 @click="onSentenceClick(s, group, groupIndex)"
               >
+                <input type="checkbox" class="sel-checkbox sel-checkbox--sentence"
+                  :checked="selectedIds.has(s.id)"
+                  @click.stop
+                  @change.stop="toggleSelectSentence(s.id)"
+                />
                 <span class="sentence-row__idx">{{ s.sentenceIndex + 1 }}</span>
                 <span class="sentence-row__text">{{ truncate(s.text, 50) }}</span>
                 <span class="sentence-row__dur">{{ s.durationMs != null ? fmt(s.durationMs) : '—' }}</span>
@@ -134,7 +144,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useGenerationStore } from '@/store/generation.js'
 import { usePlaybackStore }   from '@/store/playback.js'
 import { formatDuration }     from '@/audio/timestamps.js'
@@ -154,17 +164,34 @@ const expanded = ref({})
 
 const hasReadyAudio = computed(() => gen.groups.some(g => g.stitchStatus === 'ready'))
 
-const selectedIds  = ref(new Set())
-const allSelected  = computed(() => gen.groups.length > 0 && gen.groups.every(g => selectedIds.value.has(g.id)))
-const someSelected = computed(() => gen.groups.some(g => selectedIds.value.has(g.id)))
+// Selection operates at sentence level
+const selectedIds  = ref(new Set())  // sentence IDs
 
-function toggleSelect(id) {
+// All sentence IDs across all groups
+const allSentenceIds = computed(() => gen.groups.flatMap(g => g.sentences?.map(s => s.id) ?? []))
+const allSelected    = computed(() => allSentenceIds.value.length > 0 && allSentenceIds.value.every(id => selectedIds.value.has(id)))
+const someSelected   = computed(() => allSentenceIds.value.some(id => selectedIds.value.has(id)))
+
+function groupAllSelected(group) {
+  return group.sentences?.every(s => selectedIds.value.has(s.id)) ?? false
+}
+function groupSomeSelected(group) {
+  return group.sentences?.some(s => selectedIds.value.has(s.id)) ?? false
+}
+function toggleSelectSentence(id) {
   const s = new Set(selectedIds.value)
   s.has(id) ? s.delete(id) : s.add(id)
   selectedIds.value = s
 }
+function toggleSelectGroup(group) {
+  const s = new Set(selectedIds.value)
+  const ids = group.sentences?.map(s2 => s2.id) ?? []
+  const allOn = ids.every(id => s.has(id))
+  ids.forEach(id => allOn ? s.delete(id) : s.add(id))
+  selectedIds.value = s
+}
 function toggleSelectAll() {
-  selectedIds.value = allSelected.value ? new Set() : new Set(gen.groups.map(g => g.id))
+  selectedIds.value = allSelected.value ? new Set() : new Set(allSentenceIds.value)
 }
 function onDeleteSelected() {
   if (!selectedIds.value.size) return
@@ -194,11 +221,16 @@ function onSentenceClick(s, group, groupIndex) {
     emit('focus-sentence', { from: s.editorFrom, to: s.editorTo })
   }
 
-  // Seek player to this group (or cold-start if nothing loaded yet)
   if (group.stitchStatus !== 'ready') return
+
+  // Compute absolute master-timeline position for this sentence
+  // group.startMs = absolute group start; s.startMs = offset within group
+  const sentenceAbsMs = (group.startMs ?? 0) + (s.startMs ?? 0)
+
   if (playback.isPlaying || playback.isPaused) {
-    playback.seekToGroup(groupIndex)
+    playback.seekToMs(sentenceAbsMs)
   } else {
+    // Cold start — load from this group then seek to sentence if not at group start
     playback.loadAndPlay(gen.groups, groupIndex)
   }
 }
@@ -273,6 +305,22 @@ async function jumpTo(groupId, sentenceId) {
   blinkingId.value = sentenceId ?? groupId
   setTimeout(() => { blinkingId.value = null }, 1400)
 }
+
+// ── Follow mode — auto-expand + scroll to active sentence ────────────────────
+watch(() => playback.currentSentenceId, async (sentenceId) => {
+  if (!playback.followMode || !sentenceId) return
+
+  const group = gen.groups.find(g => g.sentences?.some(s => s.id === sentenceId))
+  if (!group) return
+
+  if (!expanded.value[group.id]) {
+    expanded.value = { ...expanded.value, [group.id]: true }
+    await nextTick()
+  }
+
+  const el = document.querySelector(`[data-sentence-id="${sentenceId}"]`)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+})
 
 defineExpose({ jumpTo })
 </script>
@@ -457,14 +505,21 @@ defineExpose({ jumpTo })
   25%, 75% { background: rgba(251, 191, 36, 0.25); }
 }
 .group-row--blink    { animation: playlist-blink 0.7s ease 2; }
-.sentence-row--blink { animation: playlist-blink 0.7s ease 2; }
-
+.sentence-row--blink  { animation: playlist-blink 0.7s ease 2; }
+.sentence-row--active {
+  background: rgba(251, 191, 36, 0.18) !important;
+  border-left: 2px solid rgba(251, 191, 36, 0.8);
+  padding-left: 4px;
+}
+.sentence-row--selected { background: rgba(124,92,191,0.08); }
 .sentence-row {
-  display: grid; grid-template-columns: 18px 1fr auto auto;
-  align-items: center; gap: 6px; padding: 3px 4px; border-radius: 4px;
+  display: grid; grid-template-columns: 16px 18px 1fr auto auto;
+  align-items: center; gap: 5px; padding: 3px 4px; border-radius: 4px;
 }
 .sentence-row--clickable { cursor: pointer; }
-.sentence-row--clickable:hover { background: rgba(124,92,191,0.12); }.sentence-row--clickable:hover { background: rgba(124,92,191,0.12); }
+.sentence-row--clickable:hover { background: rgba(124,92,191,0.12); }
+.sentence-row--selected { background: rgba(124,92,191,0.08); }
+.sel-checkbox--sentence { width: 12px; height: 12px; accent-color: var(--color-accent); cursor: pointer; }
 .sentence-row__idx {
   font-size: 10px; font-family: var(--font-mono);
   color: var(--color-text-muted); opacity: 0.5; text-align: right;
