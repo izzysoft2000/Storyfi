@@ -13,6 +13,7 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
+      <span class="app-version">v2.1</span>
     </header>
 
     <!-- Project Grid -->
@@ -384,6 +385,18 @@ function relativeDate(ts) {
   padding: 28px 48px 24px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
+  position: relative;
+}
+
+.app-version {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  opacity: 0.35;
+  letter-spacing: 0.05em;
 }
 
 .library__brand { display: flex; flex-direction: column; gap: 2px }
