@@ -1,8 +1,8 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-22 (session 8)
-> Current phase: v1.6 — Segment grouping & table support
+> Last updated: 2026-04-26 (session 9)
+> Current phase: v2.0 — Playback sync, sentence selection, follow mode, deploy pipeline
 
 ---
 
@@ -648,6 +648,21 @@ Waveform canvas replaces the thin `player-track` progress div entirely. 52px tal
 | Bug #31 | Playlist subentry jumps wrong — char offset vs ProseMirror position | ✅ |
 | Bug #32 | Segments split mid-paragraph by char limit — removed auto-splitting | ✅ |
 | Bug #33 | One group per paragraph causing redundant header+subentry display | ✅ |
+| v2.0 | Playlist: sentence-level checkboxes + Re-Generate/Delete selected sentences | ✅ |
+| v2.0 | Follow mode toggle (amber) in player bar — auto-expand + scroll + highlight active sentence | ✅ |
+| v2.0 | Browser TTS highlight sync: currentSentenceId set directly in speakNext | ✅ |
+| v2.0 | seekToMs boundary fix (ms < o.endMs) — sentence click no longer plays prev group | ✅ |
+| v2.0 | Timing write-back to group.sentences[i] — highlight advances through multi-sentence groups | ✅ |
+| v2.0 | Paused scrub: seekToMs stays paused, calls _syncHighlight | ✅ |
+| v2.0 | Cold scrub: AudioPlayerBar loads from nearest group index | ✅ |
+| v2.0 | ctx.setTransform instead of ctx.scale — playhead offset drift fixed | ✅ |
+| v2.0 | Sentence click: seekToMs(group.startMs + s.startMs) instead of seekToGroup | ✅ |
+| v2.0 | _startedAtCtx + _segmentOffsetMs anchored per-sentence in browser speakNext | ✅ |
+| v2.0 | onAutoTag: async + await addRole + await nextTick (RECURRING BUG — must not be lost) | ✅ |
+| v2.0 | generation.js: regenerateSentences + deleteSentences | ✅ |
+| v2.0 | Deploy HTML: local storyfi-deploy.html, opens in browser, one-click deploy | ✅ |
+| v2.0 | Deploy server: git pull --rebase before write+build+push — no more conflicts | ✅ |
+| v2.0 | CORS: Access-Control-Allow-Origin * on deploy endpoint | ✅ |
 | Backlog | Scene/Act/Chapter hierarchy | ⬜ |
 | Backlog | Cloudflare Worker — TTS proxy + OAuth (MiniMax CORS fix) | ⬜ |
 | Backlog | Google Drive integration (requires Worker) | ⬜ |
@@ -1061,3 +1076,113 @@ Table cells excluded from auto-tag via `return false` on `table` node type in `d
 - `src/modals/SettingsModal.vue`
 - `src/composables/useMobileLayout.js`
 - `src/App.vue`
+
+---
+
+## v2.0 Playback Sync, Sentence Selection & Deploy Pipeline (session 9 — 2026-04-26)
+
+### Files changed this session
+| File | What changed |
+|---|---|
+| `src/store/playback.js` | seekToMs 3-way split, paused scrub, browser speakNext anchoring, follow mode, findCurrentSentence fallback |
+| `src/store/generation.js` | timing write-back to group.sentences[i], regenerateSentences, deleteSentences |
+| `src/components/AudioPlayerBar.vue` | ctx.setTransform fix, cold scrub loadAndPlay, follow toggle button (amber) |
+| `src/panels/PlaylistPane.vue` | sentence-level checkboxes, follow watcher, sentence-row--active CSS |
+| `src/views/EditorView.vue` | onAutoTag async fix, onDeleteSelected/onRegenerateSelected use sentence IDs |
+| `/opt/storyfi-deploy/main.go` | git pull --rebase added before file write step |
+
+---
+
+### ⚠️ RECURRING BUG — onAutoTag MUST be async
+
+**Every time EditorView.vue is extracted from a zip this fix gets lost. CHECK FIRST.**
+
+```js
+async function onAutoTag() {
+  ...
+  for (const label of labels) await store.addRole(label)
+  await nextTick()   // ← REQUIRED before applyAutoTag
+  ...
+  for (const label of firstPass.unmatched) {
+    if (!alreadyExists) { await store.addRole(clean); newRolesAdded++ }
+  }
+  if (newRolesAdded > 0) await nextTick()
+  ...
+}
+```
+
+---
+
+### Deploy Pipeline (FULLY OPERATIONAL)
+
+**End-of-session workflow:**
+1. Claude generates `storyfi-deploy.html` with all changed files baked in as base64
+2. Izzy downloads → opens in browser (file://) → clicks Deploy
+3. VPS: `git pull --rebase` → write files → `npm run build` → `git push`
+4. Site live at `https://storyfi.izzysoft.com`
+
+**Endpoint:** `POST https://storyfi.izzysoft.com/deploy-api/deploy`
+**Token:** `3011a2ee76ed37c9cde81fa528ac5840bc53d60f5f9e7523abbdeb2798d35c90`
+**Health:** `GET https://storyfi.izzysoft.com/deploy-api/health`
+**CORS:** `Access-Control-Allow-Origin: *` (allows file:// and claude.ai)
+**Go binary:** `/opt/storyfi-deploy/storyfi-deploy`
+**Service:** `systemctl status storyfi-deploy`
+**Repo:** `/root/storyfi` → builds to `/var/www/storyfi.izzysoft.com`
+**Node:** `/root/.nvm/versions/node/v20.20.2/bin/`
+
+---
+
+### Playback Architecture (v2.0 final)
+
+**seekToMs — 3 cases:**
+- `isPlaying` → seek + keep playing (`_startGroupAtOffset`)
+- `isPaused` → `_stopSourceNode`, update position vars, `_syncHighlight()`, stay paused
+- stopped → update `currentMs`/`currentGroupIdx` only
+
+**Browser TTS per-sentence:**
+- `speakNext()` sets `currentSentenceId = sentence.id` and re-anchors `_startedAtCtx` at each utterance
+- No time-based guessing — sentence boundaries drive both highlight and follow scroll
+
+**Timing write-back (critical):**
+- `maybeStitchGroup` writes `startMs/endMs` to BOTH `sentences.value[id]` AND `group.sentences[i]`
+- `_syncHighlight` reads from `group.sentences[i]` — must be populated or highlight jumps to last sentence
+
+**Follow mode:**
+- `playback.followMode` (bool, default true) in playback store
+- Toggle button in AudioPlayerBar — amber when on
+- PlaylistPane watches `currentSentenceId` → auto-expands group, scrolls row into view
+- Active sentence: amber left border + background (`sentence-row--active`)
+
+**Sentence selection:**
+- `selectedIds` = Set of sentence IDs (not group IDs)
+- Group checkbox = toggle all sentences in group (indeterminate when partial)
+- Re-Generate → `gen.regenerateSentences(ids)` — resets only selected, re-stitches group
+- Delete → `gen.deleteSentences(ids)` + untags editor ranges via `removeTagsInRanges`
+
+---
+
+### How to start a new session (IMPORTANT)
+
+**Always upload a zip + SNAPSHOT.md.** Extract the zip ONCE at session start and
+work from those files for the entire session.
+
+**Session start ritual:**
+```bash
+cd /tmp && unzip -o /mnt/user-data/uploads/Storyfi_vX_X.zip -d /tmp/storyfi/
+```
+Then work exclusively on files in `/tmp/storyfi/` via `str_replace` and `view`.
+
+**The golden rule — NEVER re-extract mid-session.**
+Re-extracting individual files (e.g. `unzip -p Storyfi.zip src/views/EditorView.vue`)
+resets that file to the stale zip version and silently drops any patches made this session.
+This was the root cause of every RECURRING BUG.
+
+**End of session:**
+1. Generate `storyfi-deploy.html` from the patched files in `/tmp/storyfi/`
+2. Izzy downloads → opens in browser → clicks Deploy
+3. VPS: git pull → write files → npm build → git push → live
+4. Update SNAPSHOT.md
+
+**If no zip is available** (quick follow-up session):
+Ask Izzy to paste specific files from:
+`https://raw.githubusercontent.com/izzysoft2000/Storyfi/main/src/...`
