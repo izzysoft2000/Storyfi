@@ -923,7 +923,7 @@ async function onGenerate() {
   // Warn if any cast members have no voice assigned
   const unassigned = store.cast.filter(r => !r.voiceAssignment?.voiceId)
   if (unassigned.length > 0) {
-    const names = unassigned.map(r => r.label).join(', ')
+    const names = unassigned.map(r => r.label ?? '(unnamed)').join(', ')
     const proceed = window.confirm(
       `${unassigned.length} cast member${unassigned.length !== 1 ? 's have' : ' has'} no voice assigned:\n\n${names}\n\nThese segments will fail. Continue anyway?`
     )

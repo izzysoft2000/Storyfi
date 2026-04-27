@@ -246,7 +246,14 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     setSentenceStatus(sentence.id, 'generating')
 
     const role = projectStore.cast.find(r => r.id === sentence.roleId)
-    
+
+    // Skip sentences whose role no longer exists in cast (orphaned group)
+    if (!role) {
+      setSentenceStatus(sentence.id, 'error', `Role not found (orphaned segment — delete and re-tag)`)
+      failCount.value++
+      return
+    }
+
     // Determine which provider this specific role wants to use
     const targetProviderId = role?.voiceAssignment?.providerId || defaultProviderId
     const provider = getProvider(targetProviderId)
@@ -260,7 +267,7 @@ async function generateAll({ providerId: defaultProviderId, charLimit = 250, doc
     }
 
     if (!voiceId) {
-      setSentenceStatus(sentence.id, 'error', `No voice assigned to role "${role?.label}"`)
+      setSentenceStatus(sentence.id, 'error', `No voice assigned to role "${role.label}"`)
       failCount.value++
       return
     }
