@@ -149,16 +149,30 @@ export const useGenerationStore = defineStore('generation', () => {
       }
 
       const groupId    = existing?.id ?? `group_${groupIndex}_${uuid()}`
-      const role       = projectStore.cast.find(r => r.id === sg.roleId)
+
+      // Try to find role by ID first, fall back to label match for orphaned spans
+      // (happens when cast is rebuilt via Auto-tag, creating new UUIDs)
+      let role = projectStore.cast.find(r => r.id === sg.roleId)
+      if (!role && sg.roleLabel) {
+        role = projectStore.cast.find(r =>
+          r.label.trim().toLowerCase() === sg.roleLabel.trim().toLowerCase()
+        )
+      }
+      const resolvedRoleId = role?.id ?? sg.roleId
       const providerId = role?.voiceAssignment?.providerId ?? 'browser'
-      sentenceList.forEach(s => { s.paragraphGroupId = groupId })
+
+      // Update sentence roleIds to match resolved role
+      sentenceList.forEach(s => {
+        s.paragraphGroupId = groupId
+        s.roleId = resolvedRoleId
+      })
 
       return {
         id:                  groupId,
         spanKey,
-        roleId:              sg.roleId,
-        roleLabel:           sg.roleLabel,
-        color:               sg.color,
+        roleId:              resolvedRoleId,
+        roleLabel:           role?.label ?? sg.roleLabel,
+        color:               role?.color ?? sg.color,
         providerId,
         livePlayback:        providerId === 'browser',
         _voiceURI:           providerId === 'browser' ? (role?.voiceAssignment?.voiceId ?? null) : null,
