@@ -1,8 +1,8 @@
 <template>
   <div class="audio-player-bar" :class="{ 'player--loading': playback.isLoading }">
 
-    <!-- ── Waveform canvas (replaces thin progress track) ──────────────── -->
-    <div class="waveform-wrap">
+    <!-- ── Waveform / progress track + overlaid time labels ────────────── -->
+    <div class="waveform-wrap" :class="{ 'waveform-wrap--flat': !playback.waveformData }">
       <canvas
         ref="canvasEl"
         class="waveform-canvas"
@@ -14,20 +14,13 @@
         @mousedown="onCanvasMouseDown"
         @touchstart.passive="onCanvasTouch"
       />
-      <!-- Placeholder bars shown before waveform is decoded -->
-      <div v-if="!playback.waveformData" class="waveform-placeholder">
-        <div
-          v-for="i in 40" :key="i"
-          class="waveform-placeholder__bar"
-          :style="{ height: placeholderH(i) }"
-        />
-      </div>
+      <!-- Time labels overlay on waveform (translucent bg so waveform shows through) -->
+      <span class="player-time player-time--current">{{ playback.currentTimeDisplay }}</span>
+      <span class="player-time player-time--total">{{ playback.totalTimeDisplay }}</span>
     </div>
 
-    <!-- ── Time + controls row ─────────────────────────────────────────── -->
+    <!-- ── Controls row (stop + play/pause only) ───────────────────────── -->
     <div class="player-controls-row">
-
-      <span class="player-time">{{ playback.currentTimeDisplay }}</span>
 
       <!-- Stop -->
       <button
@@ -60,21 +53,6 @@
           <path d="M7 4.5l9 5.5-9 5.5V4.5z"/>
         </svg>
       </button>
-
-      <!-- Follow mode toggle — tracks active sentence in playlist -->
-      <button
-        class="player-btn player-btn--follow"
-        :class="{ 'player-btn--follow-on': playback.followMode }"
-        :title="playback.followMode ? 'Following playlist (click to disable)' : 'Follow playlist'"
-        @click="playback.followMode = !playback.followMode"
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path d="M3 4a1 1 0 000 2h14a1 1 0 100-2H3zm0 5a1 1 0 000 2h8a1 1 0 100-2H3zm0 5a1 1 0 000 2h5a1 1 0 100-2H3z"/>
-          <circle cx="16" cy="14" r="3" class="follow-dot"/>
-        </svg>
-      </button>
-
-      <span class="player-time player-time--right">{{ playback.totalTimeDisplay }}</span>
 
     </div>
 
@@ -125,41 +103,70 @@ function drawWaveform() {
   const canvas = canvasEl.value
   if (!canvas) return
 
-  const dpr    = window.devicePixelRatio || 1
-  const W      = canvas.clientWidth
-  const H      = canvas.clientHeight
+  const dpr = window.devicePixelRatio || 1
+  const W   = canvas.clientWidth
+  const H   = canvas.clientHeight
   if (W === 0 || H === 0) return
 
-  // Resize backing store if needed
   if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
     canvas.width  = Math.round(W * dpr)
     canvas.height = Math.round(H * dpr)
   }
 
-  const ctx  = canvas.getContext('2d')
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)   // reset + scale in one call — prevents scale accumulation on repeated redraws
+  const ctx      = canvas.getContext('2d')
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, W, H)
 
-  const data     = playback.waveformData   // Float32Array | null getter
-  const progress = playback.progress       // 0..1
-  const bars     = data ? data.length : 0
+  const data     = playback.waveformData
+  const progress = playback.progress
   const mid      = H / 2
+  const px       = progress * W
 
-  if (!data || bars === 0) return
+  if (!data || data.length === 0) {
+    // ── Flat progress track (browser TTS / no amplitude) ──────────────
+    const trackH = 3
+    const radius = trackH / 2
 
-  const barW  = W / bars
-  const gap   = Math.max(0.5, barW * 0.2)
-  const bw    = Math.max(1, barW - gap)
+    // Track background
+    ctx.fillStyle = UNPLAYED
+    ctx.beginPath()
+    ctx.roundRect ? ctx.roundRect(0, mid - radius, W, trackH, radius)
+                  : ctx.rect(0, mid - radius, W, trackH)
+    ctx.fill()
+
+    // Played fill
+    if (px > 0) {
+      ctx.fillStyle = PLAYED
+      ctx.beginPath()
+      ctx.roundRect ? ctx.roundRect(0, mid - radius, px, trackH, radius)
+                    : ctx.rect(0, mid - radius, px, trackH)
+      ctx.fill()
+    }
+
+    // Dot playhead
+    const DOT_R = 5
+    ctx.fillStyle = ACCENT_LIT
+    ctx.beginPath()
+    ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), mid, DOT_R, 0, Math.PI * 2)
+    ctx.fill()
+
+    return
+  }
+
+  // ── Waveform bars (HD audio) ────────────────────────────────────────
+  const bars = data.length
+  const barW = W / bars
+  const gap  = Math.max(0.5, barW * 0.2)
+  const bw   = Math.max(1, barW - gap)
 
   for (let i = 0; i < bars; i++) {
-    const x      = i * barW + gap / 2
-    const amp    = data[i]
-    const halfH  = Math.max(2, amp * mid * 0.92)
-    const ratio  = i / bars
+    const x     = i * barW + gap / 2
+    const amp   = data[i]
+    const halfH = Math.max(2, amp * mid * 0.88)
+    const ratio = i / bars
     const played = ratio < progress
-    const isHead = Math.abs(ratio - progress) < 1.5 / bars
 
-    ctx.fillStyle = isHead ? ACCENT_LIT : played ? PLAYED : UNPLAYED
+    ctx.fillStyle = played ? PLAYED : UNPLAYED
     ctx.beginPath()
     if (ctx.roundRect) {
       ctx.roundRect(x, mid - halfH, bw, halfH * 2, 1)
@@ -169,14 +176,19 @@ function drawWaveform() {
     ctx.fill()
   }
 
-  // Playhead line
-  const px = progress * W
-  ctx.strokeStyle = ACCENT_LIT
-  ctx.lineWidth   = 1.5
+  // Dot playhead (instead of line)
+  const DOT_R = 5
+  ctx.fillStyle = ACCENT_LIT
+  // Glow ring
   ctx.beginPath()
-  ctx.moveTo(px, 3)
-  ctx.lineTo(px, H - 3)
-  ctx.stroke()
+  ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), mid, DOT_R + 3, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255, 180, 154, 0.20)'
+  ctx.fill()
+  // Dot
+  ctx.fillStyle = ACCENT_LIT
+  ctx.beginPath()
+  ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), mid, DOT_R, 0, Math.PI * 2)
+  ctx.fill()
 }
 
 // Redraw on progress tick, waveform data change, or panel resize
@@ -276,8 +288,11 @@ function onCanvasTouch(e) {
 /* ── Waveform ───────────────────────────────────────────────────────────────── */
 .waveform-wrap {
   position: relative;
-  height: 52px;
+  height: 48px;
   cursor: pointer;
+}
+.waveform-wrap--flat {
+  height: 28px;
 }
 
 .waveform-canvas {
@@ -286,24 +301,25 @@ function onCanvasTouch(e) {
   height: 100%;
 }
 
-/* Placeholder shown before audio is decoded */
-.waveform-placeholder {
+/* Time labels overlaid on waveform/track with translucent bg */
+.player-time--current,
+.player-time--total {
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  background: rgba(26, 20, 24, 0.60);
+  padding: 1px 5px;
+  border-radius: 4px;
   pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(2px);
 }
-
-.waveform-placeholder__bar {
-  flex: 1;
-  background: var(--color-border, rgba(255 255 255 / 0.1));
-  border-radius: 1px;
-  min-height: 3px;
-  opacity: 0.5;
-}
+.player-time--current { left: 8px; }
+.player-time--total   { right: 8px; }
 
 /* ── Controls row ───────────────────────────────────────────────────────────── */
 .player-controls-row {
@@ -312,19 +328,7 @@ function onCanvasTouch(e) {
   gap: 8px;
 }
 
-.player-time {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-muted, rgba(255 255 255 / 0.45));
-  white-space: nowrap;
-  min-width: 40px;
-  font-family: var(--font-mono);
-}
-
-.player-time--right {
-  text-align: right;
-  margin-left: auto;
-}
+/* player-time styles moved to waveform overlay */
 
 /* ── Buttons ────────────────────────────────────────────────────────────────── */
 .player-btn {
@@ -365,19 +369,7 @@ function onCanvasTouch(e) {
   color: var(--color-text-muted, rgba(255 255 255 / 0.25));
 }
 
-.player-btn--follow {
-  width: 28px; height: 28px; padding: 0;
-  color: var(--color-text-muted);
-  opacity: 0.35;
-}
-.player-btn--follow:hover { opacity: 0.7; color: rgba(251, 191, 36, 0.8); }
-.player-btn--follow svg { width: 14px; height: 14px; }
-.player-btn--follow-on {
-  opacity: 1 !important;
-  color: rgba(251, 191, 36, 1.0);
-}
-.player-btn--follow-on .follow-dot { fill: rgba(251, 191, 36, 1.0); }
-.follow-dot { fill: currentColor; }
+/* follow toggle moved to PlaylistPane sel-header */
 
 /* ── Spinner ────────────────────────────────────────────────────────────────── */
 .player-spinner { animation: player-spin 0.8s linear infinite }

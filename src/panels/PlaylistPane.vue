@@ -11,6 +11,22 @@
       />
       <span class="sel-col sel-col--count">({{ gen.groups.length }})</span>
       <span class="sel-col sel-col--time">{{ fmtTotal(totalEstimatedMs) }}</span>
+
+      <!-- Follow mode toggle — now in toolbar -->
+      <button
+        class="follow-toggle"
+        :class="{ 'follow-toggle--on': playback.followMode }"
+        :title="playback.followMode ? 'Following active sentence (click to disable)' : 'Follow active sentence'"
+        @click="playback.followMode = !playback.followMode"
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true">
+          <circle cx="10" cy="10" r="5.5" stroke="currentColor" stroke-width="1.6" fill="none"/>
+          <circle cx="10" cy="10" r="1.8" fill="currentColor"/>
+          <path stroke="currentColor" stroke-width="1.4" stroke-linecap="round"
+            d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2"/>
+        </svg>
+      </button>
+
       <div v-if="someSelected" class="sel-actions">
         <button class="sel-action-btn sel-action-btn--regen"
           :disabled="!isOnline || gen.isGenerating"
@@ -61,7 +77,10 @@
         </div>
       </div>
 
-      <!-- Generated group rows — explicit condition, not v-else -->
+      <!-- Audio player — above the list -->
+    <AudioPlayerBar v-if="hasReadyAudio || playback.isPlaying || playback.isPaused" :groups="gen.groups" />
+
+    <!-- Generated group rows — explicit condition, not v-else -->
       <div v-else-if="gen.groups.length > 0" class="groups-list">
         <div
           v-for="(group, groupIndex) in gen.groups"
@@ -138,8 +157,7 @@
 
     </div>
 
-    <!-- Audio player — docked at bottom of pane -->
-    <AudioPlayerBar v-if="hasReadyAudio || playback.isPlaying || playback.isPaused" :groups="gen.groups" />
+
 
   </div>
 </template>
@@ -456,6 +474,26 @@ defineExpose({ jumpTo })
 .sel-checkbox { width: 14px; height: 14px; accent-color: var(--color-accent); cursor: pointer; flex-shrink: 0; }
 .sel-col { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); opacity: 0.7; white-space: nowrap; }
 .sel-actions { display: flex; gap: 6px; justify-content: flex-end; grid-column: 4; }
+
+/* Follow toggle in sel-header */
+.follow-toggle {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; padding: 0;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  opacity: 0.45;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+}
+.follow-toggle:hover { opacity: 0.8; color: rgba(251,191,36,0.9); }
+.follow-toggle--on {
+  opacity: 1;
+  color: rgba(251,191,36,1.0);
+  border-color: rgba(251,191,36,0.5);
+  background: rgba(251,191,36,0.08);
+}
 .sel-action-btn { all: unset; cursor: pointer; font-size: 11px; font-family: var(--font-ui); padding: 3px 9px; border-radius: 6px; white-space: nowrap; transition: background 0.12s; }
 .sel-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .sel-action-btn--regen { background: var(--color-accent); color: #fff; }
