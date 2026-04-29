@@ -1,8 +1,8 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-26 (session 9)
-> Current phase: v2.0 — Playback sync, sentence selection, follow mode, deploy pipeline
+> Last updated: 2026-04-29 (session 10)
+> Current phase: v2.2 — Studio theme, deploy pipeline, player bar redesign
 
 ---
 
@@ -663,6 +663,20 @@ Waveform canvas replaces the thin `player-track` progress div entirely. 52px tal
 | v2.0 | Deploy HTML: local storyfi-deploy.html, opens in browser, one-click deploy | ✅ |
 | v2.0 | Deploy server: git pull --rebase before write+build+push — no more conflicts | ✅ |
 | v2.0 | CORS: Access-Control-Allow-Origin * on deploy endpoint | ✅ |
+| v2.1 | Orphaned role guard: label-match fallback in buildGroupsFromDoc | ✅ |
+| v2.1 | Voice warning shows (unnamed) instead of undefined | ✅ |
+| v2.1 | Version number + build timestamp tooltip in Library header | ✅ |
+| v2.1 | deploy server: git pull --rebase before write+build+push | ✅ |
+| v2.1 | Deploy HTML: local storyfi-deploy.html, one-click, CORS * | ✅ |
+| v2.2 | Studio theme Phase 1: warm palette #1a1418, Fraunces, coral #ff8e6e accent | ✅ |
+| v2.2 | Studio theme Phase 2: 32px role avatars in Cast, pill tags (left-border) in Editor | ✅ |
+| v2.2 | Studio theme Phase 3: waveform thumbnail cards in Library, character-tinted playlist rows | ✅ |
+| v2.2 | Player bar: play button left of progress bar, moved above list then fixed to bottom | ✅ |
+| v2.2 | Dot playhead on baseline, waveform positive-only growing from bottom | ✅ |
+| v2.2 | Time labels at top of waveform with translucent backdrop | ✅ |
+| v2.2 | Follow toggle moved from player bar to sel-header toolbar | ✅ |
+| v2.2 | Stop button removed | ✅ |
+| v2.2 | synccheck.js: skip livePlayback groups (browser TTS) | ✅ |
 | Backlog | Scene/Act/Chapter hierarchy | ⬜ |
 | Backlog | Cloudflare Worker — TTS proxy + OAuth (MiniMax CORS fix) | ⬜ |
 | Backlog | Google Drive integration (requires Worker) | ⬜ |
@@ -1186,3 +1200,77 @@ This was the root cause of every RECURRING BUG.
 **If no zip is available** (quick follow-up session):
 Ask Izzy to paste specific files from:
 `https://raw.githubusercontent.com/izzysoft2000/Storyfi/main/src/...`
+
+---
+
+## v2.2 Studio Theme + Player Redesign (session 10 — 2026-04-29)
+
+### Files changed this session
+| File | What changed |
+|---|---|
+| `src/App.vue` | Design tokens: warm palette, coral accent, new color vars |
+| `index.html` | Fonts: Fraunces + Inter replaces Playfair + DM Sans |
+| `src/components/AudioPlayerBar.vue` | Circle play button left of progress bar; dot playhead on baseline; waveform positive-only from bottom; time labels at top; stop button removed; follow toggle removed |
+| `src/panels/PlaylistPane.vue` | Player bar moved to bottom (outside body div); follow toggle added to sel-header; character --group-color CSS var on rows; sentence-row--active amber |
+| `src/panels/CastPanel.vue` | 32px avatar circles replaces color dot; gradient bg from role color |
+| `src/editor/extensions/VoiceTag.js` | Pill tags: left-border 3px + bg tint instead of bottom underline |
+| `src/editor/StoryEditor.vue` | Bubble-jump hover → coral |
+| `src/views/LibraryView.vue` | Waveform thumbnail strip on cards; role avatar circles; version + build timestamp |
+| `src/views/EditorView.vue` | onAutoTag async fix (recurring) |
+| `src/store/generation.js` | Orphaned role label-match fallback in buildGroupsFromDoc; regenerateSentences; deleteSentences; timing write-back to group.sentences[i] |
+| `src/store/playback.js` | followMode state; seekToMs 3-way; browser speakNext anchoring |
+| `src/storage/synccheck.js` | Skip livePlayback groups |
+| `src/modals/*.vue` | Purple → coral across all modals |
+| `src/composables/usePanelDrag.js` | Purple → coral |
+| `README.md` | Full rewrite: v2.1 architecture, deploy pipeline, project structure |
+
+---
+
+### Studio Theme Token Reference
+```css
+--color-bg:         #1a1418;    /* warm dark brown-purple */
+--color-surface:    #221b20;    /* panel backgrounds */
+--color-surface-soft: #2a222a;  /* raised surfaces, waveform thumb */
+--color-border:     rgba(255,255,255,0.06);
+--color-accent:     #ff8e6e;    /* coral — buttons, highlights, checkboxes */
+--color-text:       #f4ecec;    /* warm white */
+--color-text-muted: #a08c92;
+--font-display:     'Fraunces', Georgia, serif;
+--font-ui:          'Inter', -apple-system, sans-serif;
+--font-mono:        'JetBrains Mono', monospace;
+```
+
+### Player Bar Architecture (v2.2)
+- Single row: 36px coral circle button (left) + waveform-wrap (flex: 1)
+- `waveform-wrap`: `position: relative`, `height: 48px` (HD) / `28px` (flat)
+- Waveform: bars grow from `baseline = H - 2` upward, positive only
+- Dot playhead: `DOT_R = 5`, glow ring behind, sits on baseline
+- Time labels: `position: absolute; top: 4px` — clear of the dot
+- Flat track (browser TTS): 3px rounded bar, dot on track midline
+- Player bar docked at bottom of `.playlist-pane` outside the scrollable body
+- Follow toggle: small 22px circle in sel-header, amber when on
+
+### Deploy Pipeline (v2.2 FULLY OPERATIONAL)
+- **Endpoint:** `POST https://storyfi.izzysoft.com/deploy-api/deploy`
+- **Token:** `3011a2ee76ed37c9cde81fa528ac5840bc53d60f5f9e7523abbdeb2798d35c90`
+- **CORS:** `Access-Control-Allow-Origin: *`
+- **Flow:** git pull --rebase → write files → npm build → git push
+- **Deploy page:** generated per-session as `storyfi-deploy.html` (base64 payload)
+- Version tooltip in Library hover shows exact build timestamp
+
+### Session Start Ritual (CRITICAL)
+```bash
+cd /tmp && unzip -o /mnt/user-data/uploads/Storyfi_vX_X.zip -d /tmp/storyfi/
+```
+Extract ONCE. Work in `/tmp/storyfi/`. NEVER re-extract individual files.
+
+### ⚠️ RECURRING BUG — onAutoTag MUST be async
+```js
+async function onAutoTag() {
+  for (const label of labels) await store.addRole(label)
+  await nextTick()   // ← REQUIRED
+  // ... second pass
+  if (newRolesAdded > 0) await store.addRole(clean)
+  if (newRolesAdded > 0) await nextTick()
+}
+```
