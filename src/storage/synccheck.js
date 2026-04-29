@@ -32,7 +32,7 @@ import {
  */
 export async function syncCheckOnOpen(project) {
   const groups = (project.paragraphGroups ?? [])
-    .filter(g => g.stitchStatus === 'ready')
+    .filter(g => g.stitchStatus === 'ready' && !g.livePlayback)
 
   if (groups.length === 0) {
     return { hasDivergences: false, divergences: [], folderPermission: 'none' }
