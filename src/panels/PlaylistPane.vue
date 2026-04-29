@@ -68,6 +68,7 @@
           :key="group.id"
           class="group-row"
           :class="[`group-row--${group.stitchStatus}`, { 'group-row--playing': group.id === activeGroupId, 'group-row--blink': blinkingId === group.id }]"
+          :style="{ '--group-color': group.color ?? 'var(--color-accent)' }"
           :data-group-id="group.id"
         >
           <!-- Group header -->
@@ -541,11 +542,11 @@ defineExpose({ jumpTo })
 
 /* Active (currently playing) group row */
 .group-row--playing {
-  background: rgba(124, 92, 191, 0.07);
-  border-color: rgba(124, 92, 191, 0.3) !important;
+  background: color-mix(in srgb, var(--group-color, var(--color-accent)) 10%, transparent);
+  border-color: color-mix(in srgb, var(--group-color, var(--color-accent)) 40%, transparent) !important;
 }
 .group-row--playing > .group-row__header {
-  border-left: 3px solid var(--color-accent);
+  border-left: 3px solid var(--group-color, var(--color-accent));
   padding-left: 5px;
 }
 

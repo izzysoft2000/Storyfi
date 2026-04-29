@@ -13,7 +13,7 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
-      <span class="app-version" title="Built: 2026-04-29 15:19 EDT">v2.2</span>
+      <span class="app-version" title="Built: 2026-04-29 15:24 EDT">v2.2</span>
     </header>
 
     <!-- Project Grid -->
@@ -39,37 +39,49 @@
           class="project-card"
           @click="openProject(p.id)"
         >
-          <div class="project-card__top">
-            <div class="project-card__role-chips">
-              <span
-                v-for="role in (p.cast ?? []).slice(0, 5)"
-                :key="role.id"
-                class="role-dot"
-                :style="{ background: role.color }"
-                :title="role.label"
-              />
-            </div>
+          <!-- Waveform thumbnail -->
+          <div class="project-card__thumb">
+            <svg class="project-card__waveform" viewBox="0 0 200 40" preserveAspectRatio="none">
+              <g :opacity="(p.paragraphGroups ?? []).some(g => g.stitchStatus === 'ready') ? 0.6 : 0.2">
+                <rect v-for="(h, i) in cardWaveform(p.id)" :key="i"
+                  :x="i * 5" :y="(40 - h) / 2" :width="3" :height="h"
+                  :fill="p.cast?.[0]?.color ?? 'var(--color-accent)'" rx="1"/>
+              </g>
+            </svg>
             <div class="project-card__menu" @click.stop>
               <button class="icon-btn" title="Clear audio" @click="clearAudio(p)">⊘</button>
               <button class="icon-btn icon-btn--danger" title="Delete project" @click="deleteProjectConfirm(p)">✕</button>
             </div>
           </div>
 
-          <h2 class="project-card__title">{{ p.title }}</h2>
+          <div class="project-card__body">
+            <!-- Role avatars -->
+            <div class="project-card__avatars">
+              <span
+                v-for="role in (p.cast ?? []).slice(0, 5)"
+                :key="role.id"
+                class="cast-avatar"
+                :style="{ background: role.color }"
+                :title="role.label"
+              >{{ (role.label || '?')[0].toUpperCase() }}</span>
+            </div>
 
-          <div class="project-card__meta">
-            <span class="meta-chip">
-              {{ (p.paragraphGroups ?? []).length }} paragraphs
-            </span>
-            <span v-if="p.audioSizeBytes > 0" class="meta-chip meta-chip--audio">
-              {{ formatBytes(p.audioSizeBytes) }} audio
-            </span>
-            <span v-else class="meta-chip meta-chip--muted">No audio yet</span>
-          </div>
+            <h2 class="project-card__title">{{ p.title }}</h2>
 
-          <div class="project-card__footer">
-            <span class="project-card__date">{{ relativeDate(p.updatedAt) }}</span>
-            <button class="open-btn" @click.stop="openProject(p.id)">Open →</button>
+            <div class="project-card__meta">
+              <span class="meta-chip">
+                {{ (p.paragraphGroups ?? []).length }} segments
+              </span>
+              <span v-if="p.audioSizeBytes > 0" class="meta-chip meta-chip--audio">
+                {{ formatBytes(p.audioSizeBytes) }} audio
+              </span>
+              <span v-else class="meta-chip meta-chip--muted">No audio yet</span>
+            </div>
+
+            <div class="project-card__footer">
+              <span class="project-card__date">{{ relativeDate(p.updatedAt) }}</span>
+              <button class="open-btn" @click.stop="openProject(p.id)">Open →</button>
+            </div>
           </div>
         </div>
 
@@ -341,6 +353,16 @@ async function deleteProjectConfirm(p) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Generate a deterministic pseudo-waveform from a project ID string
+function cardWaveform(id) {
+  const bars = 40
+  return Array.from({ length: bars }, (_, i) => {
+    let h = 0
+    for (let j = 0; j < id.length; j++) h += id.charCodeAt(j) * (i + j + 1)
+    return 8 + (Math.abs(Math.sin(h * 0.03)) * 26)
+  })
+}
+
 function relativeDate(ts) {
   if (!ts) return ''
   const diff = Date.now() - ts
@@ -505,25 +527,54 @@ function relativeDate(ts) {
 .project-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 14px;
   cursor: pointer;
   transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
 }
 
 .project-card:hover {
   border-color: var(--color-accent);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+
+/* Waveform thumbnail area */
+.project-card__thumb {
+  height: 72px;
+  background: var(--color-surface-soft, #2a222a);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.project-card__waveform {
+  width: 100%; height: 100%;
+  display: block;
+}
+.project-card__body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
 }
 
 .project-card__top {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* Role avatars — replaces role dots */
+.project-card__avatars { display: flex; gap: 4px; align-items: center; }
+.cast-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-weight: 700; font-size: 10px;
+  color: #1a1418; flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 
 .project-card__role-chips { display: flex; gap: 5px; align-items: center }
@@ -535,7 +586,8 @@ function relativeDate(ts) {
   flex-shrink: 0;
 }
 
-.project-card__menu { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s }
+.project-card__menu { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s;
+  position: absolute; top: 8px; right: 8px; }
 .project-card:hover .project-card__menu { opacity: 1 }
 
 .icon-btn {
