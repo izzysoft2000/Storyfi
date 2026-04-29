@@ -1,42 +1,12 @@
 <template>
   <div class="audio-player-bar" :class="{ 'player--loading': playback.isLoading }">
 
-    <!-- ── Waveform / progress track + overlaid time labels ────────────── -->
-    <div class="waveform-wrap" :class="{ 'waveform-wrap--flat': !playback.waveformData }">
-      <canvas
-        ref="canvasEl"
-        class="waveform-canvas"
-        role="slider"
-        :aria-valuenow="Math.round(playback.currentMs)"
-        :aria-valuemax="Math.round(playback.totalMs)"
-        aria-valuemin="0"
-        aria-label="Playback position"
-        @mousedown="onCanvasMouseDown"
-        @touchstart.passive="onCanvasTouch"
-      />
-      <!-- Time labels overlay on waveform (translucent bg so waveform shows through) -->
-      <span class="player-time player-time--current">{{ playback.currentTimeDisplay }}</span>
-      <span class="player-time player-time--total">{{ playback.totalTimeDisplay }}</span>
-    </div>
+    <!-- ── Main row: play button + waveform/progress ────────────────────── -->
+    <div class="player-main-row">
 
-    <!-- ── Controls row (stop + play/pause only) ───────────────────────── -->
-    <div class="player-controls-row">
-
-      <!-- Stop -->
+      <!-- Play / Pause circle button -->
       <button
-        class="player-btn"
-        title="Stop"
-        :disabled="!playback.isPlaying && !playback.isPaused"
-        @click="onStop"
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <rect x="4" y="4" width="12" height="12" rx="2"/>
-        </svg>
-      </button>
-
-      <!-- Play / Pause -->
-      <button
-        class="player-btn player-btn--primary"
+        class="player-play-btn"
         :title="playback.isPlaying ? 'Pause' : 'Play all'"
         :disabled="playback.isLoading || (!hasReadyAudio && !playback.isPlaying && !playback.isPaused)"
         @click="onPlayPause"
@@ -54,9 +24,27 @@
         </svg>
       </button>
 
+      <!-- Waveform / progress track + overlaid time labels -->
+      <div class="waveform-wrap" :class="{ 'waveform-wrap--flat': !playback.waveformData }">
+        <canvas
+          ref="canvasEl"
+          class="waveform-canvas"
+          role="slider"
+          :aria-valuenow="Math.round(playback.currentMs)"
+          :aria-valuemax="Math.round(playback.totalMs)"
+          aria-valuemin="0"
+          aria-label="Playback position"
+          @mousedown="onCanvasMouseDown"
+          @touchstart.passive="onCanvasTouch"
+        />
+        <!-- Time labels overlay -->
+        <span class="player-time player-time--current">{{ playback.currentTimeDisplay }}</span>
+        <span class="player-time player-time--total">{{ playback.totalTimeDisplay }}</span>
+      </div>
+
     </div>
 
-    <!-- ── Error banner ────────────────────────────────────────────────── -->
+    <!-- ── Error banner ──────────────────────────────────────────────────── -->
     <div v-if="playback.loadError" class="player-error" :title="playback.loadError">
       <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
         <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm-.75 4.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zm.75 7a.875.875 0 110-1.75.875.875 0 010 1.75z"/>
@@ -278,16 +266,41 @@ function onCanvasTouch(e) {
   flex-shrink: 0;
   background: var(--color-surface-raised, #2a222a);
   border-top: 1px solid var(--color-border, rgba(255 255 255 / 0.08));
-  padding: 10px 14px 10px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   user-select: none;
 }
 
+/* ── Main row: play button + waveform side by side ──────────────────────────── */
+.player-main-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Large circle play button ───────────────────────────────────────────────── */
+.player-play-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-accent);
+  color: var(--color-on-accent, #1a1418);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.12s;
+  box-shadow: 0 2px 10px rgba(255,142,110,0.35);
+}
+.player-play-btn svg { width: 16px; height: 16px; }
+.player-play-btn:hover:not(:disabled) { opacity: 0.88; transform: scale(1.06); }
+.player-play-btn:disabled { opacity: 0.3; cursor: not-allowed; box-shadow: none; }
+
 /* ── Waveform ───────────────────────────────────────────────────────────────── */
 .waveform-wrap {
   position: relative;
+  flex: 1;
   height: 48px;
   cursor: pointer;
 }
@@ -320,54 +333,6 @@ function onCanvasTouch(e) {
 }
 .player-time--current { left: 8px; }
 .player-time--total   { right: 8px; }
-
-/* ── Controls row ───────────────────────────────────────────────────────────── */
-.player-controls-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* player-time styles moved to waveform overlay */
-
-/* ── Buttons ────────────────────────────────────────────────────────────────── */
-.player-btn {
-  display: flex; align-items: center; justify-content: center;
-  background: none;
-  border: 1px solid var(--color-border, rgba(255 255 255 / 0.12));
-  border-radius: 8px;
-  color: var(--color-text-muted, rgba(255 255 255 / 0.55));
-  cursor: pointer;
-  padding: 0;
-  width: 32px; height: 32px;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-  flex-shrink: 0;
-}
-.player-btn svg { width: 16px; height: 16px }
-.player-btn:hover:not(:disabled) {
-  background: var(--color-surface-hover, rgba(255 255 255 / 0.06));
-  color: var(--color-text, rgba(255 255 255 / 0.9));
-  border-color: var(--color-border-hover, rgba(255 255 255 / 0.2));
-}
-.player-btn:disabled { opacity: 0.3; cursor: not-allowed }
-
-.player-btn--primary {
-  width: 36px; height: 36px;
-  background: var(--color-accent, #8b5cf6);
-  border-color: transparent;
-  color: #fff;
-  border-radius: 50%;
-}
-.player-btn--primary:hover:not(:disabled) {
-  background: var(--color-accent-hover, #7c3aed);
-  border-color: transparent;
-  color: #fff;
-}
-.player-btn--primary:disabled {
-  background: var(--color-surface-raised, #2a222a);
-  border-color: var(--color-border, rgba(255 255 255 / 0.08));
-  color: var(--color-text-muted, rgba(255 255 255 / 0.25));
-}
 
 /* follow toggle moved to PlaylistPane sel-header */
 
