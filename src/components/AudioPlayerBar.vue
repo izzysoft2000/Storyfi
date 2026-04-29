@@ -107,75 +107,77 @@ function drawWaveform() {
 
   const data     = playback.waveformData
   const progress = playback.progress
-  const mid      = H / 2
+  const baseline = H - 2   // 2px from bottom
   const px       = progress * W
+  const DOT_R    = 5
 
   if (!data || data.length === 0) {
-    // ── Flat progress track (browser TTS / no amplitude) ──────────────
+    // ── Flat progress track (browser TTS) ─────────────────────────────
     const trackH = 3
-    const radius = trackH / 2
 
-    // Track background
+    // Track bg
     ctx.fillStyle = UNPLAYED
     ctx.beginPath()
-    ctx.roundRect ? ctx.roundRect(0, mid - radius, W, trackH, radius)
-                  : ctx.rect(0, mid - radius, W, trackH)
+    ctx.roundRect ? ctx.roundRect(0, baseline - trackH, W, trackH, 1.5)
+                  : ctx.rect(0, baseline - trackH, W, trackH)
     ctx.fill()
 
-    // Played fill
+    // Played portion
     if (px > 0) {
       ctx.fillStyle = PLAYED
       ctx.beginPath()
-      ctx.roundRect ? ctx.roundRect(0, mid - radius, px, trackH, radius)
-                    : ctx.rect(0, mid - radius, px, trackH)
+      ctx.roundRect ? ctx.roundRect(0, baseline - trackH, px, trackH, 1.5)
+                    : ctx.rect(0, baseline - trackH, px, trackH)
       ctx.fill()
     }
 
-    // Dot playhead
-    const DOT_R = 5
+    // Dot on baseline
     ctx.fillStyle = ACCENT_LIT
     ctx.beginPath()
-    ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), mid, DOT_R, 0, Math.PI * 2)
+    ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), baseline - trackH / 2, DOT_R, 0, Math.PI * 2)
     ctx.fill()
 
     return
   }
 
-  // ── Waveform bars (HD audio) ────────────────────────────────────────
-  const bars = data.length
-  const barW = W / bars
-  const gap  = Math.max(0.5, barW * 0.2)
-  const bw   = Math.max(1, barW - gap)
+  // ── Waveform bars growing from baseline upward (positive only) ────────
+  const bars   = data.length
+  const barW   = W / bars
+  const gap    = Math.max(0.5, barW * 0.2)
+  const bw     = Math.max(1, barW - gap)
+  const maxH   = baseline - 4   // leave 4px headroom at top
 
   for (let i = 0; i < bars; i++) {
-    const x     = i * barW + gap / 2
-    const amp   = data[i]
-    const halfH = Math.max(2, amp * mid * 0.88)
-    const ratio = i / bars
+    const x      = i * barW + gap / 2
+    const amp    = data[i]
+    const barH   = Math.max(2, amp * maxH)
+    const ratio  = i / bars
     const played = ratio < progress
 
     ctx.fillStyle = played ? PLAYED : UNPLAYED
     ctx.beginPath()
     if (ctx.roundRect) {
-      ctx.roundRect(x, mid - halfH, bw, halfH * 2, 1)
+      ctx.roundRect(x, baseline - barH, bw, barH, 1)
     } else {
-      ctx.rect(x, mid - halfH, bw, halfH * 2)
+      ctx.rect(x, baseline - barH, bw, barH)
     }
     ctx.fill()
   }
 
-  // Dot playhead (instead of line)
-  const DOT_R = 5
-  ctx.fillStyle = ACCENT_LIT
-  // Glow ring
+  // Baseline rule
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'
+  ctx.fillRect(0, baseline, W, 1)
+
+  // Dot playhead on baseline — glow ring + dot
+  const dotX = Math.max(DOT_R, Math.min(W - DOT_R, px))
+  ctx.fillStyle = 'rgba(255,180,154,0.20)'
   ctx.beginPath()
-  ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), mid, DOT_R + 3, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(255, 180, 154, 0.20)'
+  ctx.arc(dotX, baseline, DOT_R + 3, 0, Math.PI * 2)
   ctx.fill()
-  // Dot
+
   ctx.fillStyle = ACCENT_LIT
   ctx.beginPath()
-  ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), mid, DOT_R, 0, Math.PI * 2)
+  ctx.arc(dotX, baseline, DOT_R, 0, Math.PI * 2)
   ctx.fill()
 }
 
@@ -318,8 +320,6 @@ function onCanvasTouch(e) {
 .player-time--current,
 .player-time--total {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
@@ -331,8 +331,8 @@ function onCanvasTouch(e) {
   white-space: nowrap;
   backdrop-filter: blur(2px);
 }
-.player-time--current { left: 8px; }
-.player-time--total   { right: 8px; }
+.player-time--current { left: 8px; top: 4px; transform: none; }
+.player-time--total   { right: 8px; top: 4px; transform: none; }
 
 /* follow toggle moved to PlaylistPane sel-header */
 

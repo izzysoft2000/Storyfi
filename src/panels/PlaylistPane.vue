@@ -77,11 +77,8 @@
         </div>
       </div>
 
-      <!-- Audio player — above the list -->
-    <AudioPlayerBar v-if="hasReadyAudio || playback.isPlaying || playback.isPaused" :groups="gen.groups" />
-
-    <!-- Generated group rows — explicit condition, not v-else -->
-      <div v-else-if="gen.groups.length > 0" class="groups-list">
+      <!-- Generated group rows — explicit condition, not v-else -->
+      <div v-if="gen.groups.length > 0" class="groups-list">
         <div
           v-for="(group, groupIndex) in gen.groups"
           :key="group.id"
@@ -158,6 +155,9 @@
     </div>
 
 
+
+    <!-- Audio player — docked at bottom -->
+    <AudioPlayerBar v-if="hasReadyAudio || playback.isPlaying || playback.isPaused" :groups="gen.groups" />
 
   </div>
 </template>
