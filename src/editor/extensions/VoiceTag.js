@@ -48,20 +48,24 @@ export const VoiceTag = Mark.create({
 
   renderHTML({ HTMLAttributes }) {
     const color = HTMLAttributes['data-role-color'] ?? '#6B7FD4'
+    const label = HTMLAttributes['data-role-label'] ?? ''
+    const initial = (label[0] ?? '?').toUpperCase()
     const r = parseInt(color.slice(1, 3), 16)
     const g = parseInt(color.slice(3, 5), 16)
     const b = parseInt(color.slice(5, 7), 16)
     const bg = `rgba(${r},${g},${b},0.15)`
 
+    // Studio-style: pill with colored left border + subtle background
     return [
       'span',
       mergeAttributes(HTMLAttributes, {
         class: 'voice-tag',
         style: [
           `background: ${bg}`,
-          `border-bottom: 2px solid ${color}`,
-          `border-radius: 2px`,
-          `padding: 0 2px`,
+          `border-left: 3px solid ${color}`,
+          `border-radius: 0 3px 3px 0`,
+          `padding: 0 5px 0 6px`,
+          `margin: 0 1px`,
           `cursor: default`,
         ].join('; '),
       }),

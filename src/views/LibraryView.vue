@@ -13,7 +13,7 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
-      <span class="app-version" title="Built: 2026-04-29 15:12 EDT">v2.2</span>
+      <span class="app-version" title="Built: 2026-04-29 15:19 EDT">v2.2</span>
     </header>
 
     <!-- Project Grid -->

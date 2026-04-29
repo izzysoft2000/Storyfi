@@ -590,7 +590,7 @@ defineExpose({
   color: var(--color-text-muted);
   transition: background 0.12s, color 0.12s;
 }
-.bubble-jump:hover { background: rgba(124,92,191,0.2); color: var(--color-accent); }
+.bubble-jump:hover { background: rgba(255,142,110,0.15); color: var(--color-accent); }
 
 .bubble-divider {
   width: 1px;

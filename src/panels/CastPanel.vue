@@ -19,7 +19,8 @@
             <div class="card-row">
               <span class="drag-handle" title="Drag to reorder">⠿</span>
 
-              <div class="color-swatch" :style="{ backgroundColor: role.color }">
+              <div class="role-avatar" :style="{ '--role-color': role.color }" :title="'Change color for ' + role.label">
+                <span class="role-avatar__initial">{{ (role.label || '?')[0].toUpperCase() }}</span>
                 <input
                   type="color"
                   class="color-input"
@@ -694,14 +695,28 @@ function modelCostLabel(model) {
 
 /* ─── Colour swatch ──────────────────────────────────────────────────────────── */
 
-.color-swatch {
-  width: 14px;
-  height: 14px;
+.role-avatar {
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, var(--role-color), color-mix(in oklch, var(--role-color) 70%, #ff8e6e));
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
   flex-shrink: 0;
   cursor: pointer;
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--role-color) 50%, transparent);
+}
+
+.role-avatar__initial {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  color: #1a1418;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
 }
 
 .color-input {
