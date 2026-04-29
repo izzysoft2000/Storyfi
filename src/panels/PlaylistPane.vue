@@ -359,12 +359,12 @@ defineExpose({ jumpTo })
 .tb-btn:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-accent) }
 .tb-btn:disabled              { opacity: 0.35; cursor: not-allowed }
 .tb-btn--primary              { background: var(--color-accent); border-color: var(--color-accent); color: #fff }
-.tb-btn--primary:hover:not(:disabled) { background: #6a4db0 }
+.tb-btn--primary:hover:not(:disabled) { background: #e07050 }
 
 /* Progress */
 .progress-bar-wrap {
   position: relative; height: 28px;
-  background: rgba(124,92,191,0.08);
+  background: rgba(255,142,110,0.08);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0; overflow: hidden;
 }
@@ -458,7 +458,7 @@ defineExpose({ jumpTo })
 .sel-action-btn { all: unset; cursor: pointer; font-size: 11px; font-family: var(--font-ui); padding: 3px 9px; border-radius: 6px; white-space: nowrap; transition: background 0.12s; }
 .sel-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .sel-action-btn--regen { background: var(--color-accent); color: #fff; }
-.sel-action-btn--regen:hover:not(:disabled) { background: #6a4db0; }
+.sel-action-btn--regen:hover:not(:disabled) { background: #e07050; }
 .sel-action-btn--delete { background: rgba(248,113,113,0.15); color: var(--color-error); border: 1px solid rgba(248,113,113,0.3); }
 .sel-action-btn--delete:hover:not(:disabled) { background: rgba(248,113,113,0.25); }
 
@@ -511,14 +511,14 @@ defineExpose({ jumpTo })
   border-left: 2px solid rgba(251, 191, 36, 0.8);
   padding-left: 4px;
 }
-.sentence-row--selected { background: rgba(124,92,191,0.08); }
+.sentence-row--selected { background: rgba(255,142,110,0.08); }
 .sentence-row {
   display: grid; grid-template-columns: 16px 18px 1fr auto auto;
   align-items: center; gap: 5px; padding: 3px 4px; border-radius: 4px;
 }
 .sentence-row--clickable { cursor: pointer; }
-.sentence-row--clickable:hover { background: rgba(124,92,191,0.12); }
-.sentence-row--selected { background: rgba(124,92,191,0.08); }
+.sentence-row--clickable:hover { background: rgba(255,142,110,0.12); }
+.sentence-row--selected { background: rgba(255,142,110,0.08); }
 .sel-checkbox--sentence { width: 12px; height: 12px; accent-color: var(--color-accent); cursor: pointer; }
 .sentence-row__idx {
   font-size: 10px; font-family: var(--font-mono);

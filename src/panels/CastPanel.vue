@@ -901,7 +901,7 @@ function modelCostLabel(model) {
   display: block;
   width: calc(100% - 20px);
   margin: 6px 10px 0;
-  background: rgba(124, 92, 191, 0.08);
+  background: rgba(255, 142, 110, 0.08);
   border: 1px solid rgba(124, 92, 191, 0.3);
   color: var(--color-accent);
   font-size: 12px;
@@ -913,7 +913,7 @@ function modelCostLabel(model) {
 }
 
 .autotag-btn:hover {
-  background: rgba(124, 92, 191, 0.18);
+  background: rgba(255, 142, 110, 0.18);
   border-color: var(--color-accent);
 }
 
@@ -1178,7 +1178,7 @@ function modelCostLabel(model) {
 .voice-preview-btn:hover:not(:disabled) {
   opacity: 1 !important;
   color: var(--color-accent);
-  background: rgba(124, 92, 191, 0.12);
+  background: rgba(255, 142, 110, 0.12);
 }
 
 .voice-preview-btn--playing {
@@ -1200,7 +1200,7 @@ function modelCostLabel(model) {
 
 .voice-preview-btn--cached:hover:not(:disabled) {
   opacity: 1 !important;
-  background: rgba(124, 92, 191, 0.15);
+  background: rgba(255, 142, 110, 0.15);
 }
 
 .voice-preview-btn:disabled {

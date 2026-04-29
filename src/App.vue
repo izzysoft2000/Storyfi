@@ -93,19 +93,23 @@ onUnmounted(() => {
 <style>
 /* ─── Design Tokens ──────────────────────────────────── */
 :root {
-  --color-bg:         #0e0c18;
-  --color-surface:    #1a1625;
-  --color-border:     #2e2a42;
-  --color-accent:     #7c5cbf;
-  --color-highlight:  #c084fc;
-  --color-text:       #f0eeff;
-  --color-text-muted: #8b85a8;
+  --color-bg:         #1a1418;
+  --color-surface:    #221b20;
+  --color-surface-soft: #2a222a;
+  --color-border:     rgba(255,255,255,0.06);
+  --color-accent:     #ff8e6e;
+  --color-accent2:    oklch(70% 0.18 320);
+  --color-highlight:  oklch(70% 0.18 320);
+  --color-text:       #f4ecec;
+  --color-text-muted: #a08c92;
+  --color-text-faint: #5a4a52;
+  --color-on-accent:  #1a1418;
   --color-success:    #4ade80;
   --color-warning:    #facc15;
   --color-error:      #f87171;
 
-  --font-display: 'Playfair Display', Georgia, serif;
-  --font-ui:      'DM Sans', system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-ui:      'Inter', -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
 }
 

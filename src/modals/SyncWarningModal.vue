@@ -192,7 +192,7 @@ defineExpose({ open })
 .btn:disabled { opacity: 0.4; cursor: not-allowed }
 
 .btn--accent { background: var(--color-accent); color: #fff }
-.btn--accent:hover:not(:disabled) { background: #6a4db0 }
+.btn--accent:hover:not(:disabled) { background: #e07050 }
 
 .btn--warn {
   background: rgba(250,204,21,0.1); border-color: rgba(250,204,21,0.3);

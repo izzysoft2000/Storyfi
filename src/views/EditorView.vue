@@ -1010,7 +1010,7 @@ function goLibrary() { emit('go-library') }
 }
 .wst-btn:hover { background: var(--color-border); color: var(--color-text) }
 .wst-btn.active,
-.wst-btn--fmt.active { background: rgba(124,92,191,0.18); border-color: var(--color-accent); color: var(--color-accent) }
+.wst-btn--fmt.active { background: rgba(255,142,110,0.18); border-color: var(--color-accent); color: var(--color-accent) }
 .wst-btn--ghost { color: var(--color-text-muted) }
 
 .wst-title {
@@ -1100,13 +1100,13 @@ function goLibrary() { emit('go-library') }
   line-height: 1.4;
 }
 .panel-tb-btn:hover { background: var(--color-border); color: var(--color-text) }
-.panel-tb-btn.active { background: rgba(124,92,191,0.18); border-color: var(--color-accent); color: var(--color-accent) }
+.panel-tb-btn.active { background: rgba(255,142,110,0.18); border-color: var(--color-accent); color: var(--color-accent) }
 .panel-tb-btn--fmt  { padding: 2px 6px; font-size: 12px }
 .panel-tb-btn--break { border-color: var(--color-border); color: var(--color-accent); font-family: var(--font-mono) }
 .panel-tb-btn--primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
-.panel-tb-btn--primary:hover:not(:disabled) { background: #6a4db0; }
+.panel-tb-btn--primary:hover:not(:disabled) { background: #e07050; }
 .panel-tb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-.panel-tb-btn--break:hover { background: rgba(124,92,191,0.12); border-color: var(--color-accent) }
+.panel-tb-btn--break:hover { background: rgba(255,142,110,0.12); border-color: var(--color-accent) }
 
 .panel-tb-divider {
   width: 1px; height: 14px;
@@ -1236,7 +1236,7 @@ function goLibrary() { emit('go-library') }
   padding: 5px 9px; border-radius: 6px; font-family: var(--font-ui); font-size: 13px;
   color: var(--color-text-muted); flex-shrink: 0; transition: background 0.12s, color 0.12s; white-space: nowrap;
 }
-.m-tool-btn:active        { background: rgba(124,92,191,0.18); color: var(--color-text); }
+.m-tool-btn:active        { background: rgba(255,142,110,0.18); color: var(--color-text); }
 .m-tool-btn--disabled     { opacity: 0.3; cursor: default; pointer-events: none; }
 .m-tool-btn--remove       { color: var(--color-error) !important; flex-shrink: 0; }
 .m-tool-divider           { width: 1px; height: 18px; background: var(--color-border); margin: 0 2px; flex-shrink: 0; }
@@ -1343,7 +1343,7 @@ function goLibrary() { emit('go-library') }
 }
 .m-tab .m-nav-label { transition: color 0.15s }
 .m-tab.active .m-nav-label { color: var(--color-accent) }
-.m-tab.active { background: rgba(124,92,191,0.12) }
+.m-tab.active { background: rgba(255,142,110,0.12) }
 .m-tab:active { background: rgba(255,255,255,0.05) }
 
 /* ─── Status dots ──────────────────────────────────────────────────────────── */

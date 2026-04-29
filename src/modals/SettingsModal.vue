@@ -265,7 +265,7 @@ defineExpose({ open })
 .btn--ghost { background: transparent; border-color: var(--color-border); color: var(--color-text-muted) }
 .btn--ghost:hover { border-color: var(--color-text-muted); color: var(--color-text) }
 .btn--accent { background: var(--color-accent); color: #fff }
-.btn--accent:hover { background: #6a4db0 }
+.btn--accent:hover { background: #e07050 }
 
 .modal-enter-active, .modal-leave-active { transition: all 0.2s ease }
 .modal-enter-from, .modal-leave-to       { opacity: 0; transform: scale(0.95) }

@@ -52,7 +52,7 @@ function createGhost(panelId, x, y) {
     gap:           '8px',
     padding:       '8px 16px',
     background:    get('--color-surface') || '#1a1625',
-    border:        `2px solid ${get('--color-accent') || '#7c5cbf'}`,
+    border:        `2px solid ${get('--color-accent') || 'var(--color-accent)'}`,
     borderRadius:  '8px',
     color:         get('--color-text')    || '#f0eeff',
     fontFamily:    get('--font-ui')       || 'DM Sans, sans-serif',

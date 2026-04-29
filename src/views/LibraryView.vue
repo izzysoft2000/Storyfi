@@ -13,7 +13,7 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
-      <span class="app-version" title="Built: 2026-04-29 14:41 EDT">v2.2</span>
+      <span class="app-version" title="Built: 2026-04-29 15:12 EDT">v2.2</span>
     </header>
 
     <!-- Project Grid -->
@@ -449,7 +449,7 @@ function relativeDate(ts) {
   background: var(--color-accent);
   color: #fff;
 }
-.action-btn--primary:hover { background: #6a4db0 }
+.action-btn--primary:hover { background: #e07050 }
 
 /* ─── Main ───────────────────────────────────────────── */
 .library__main {
@@ -694,7 +694,7 @@ function relativeDate(ts) {
   background: var(--color-accent);
   color: #fff;
 }
-.btn--accent:hover:not(:disabled) { background: #6a4db0 }
+.btn--accent:hover:not(:disabled) { background: #e07050 }
 
 /* Transitions */
 .modal-enter-active, .modal-leave-active { transition: all 0.2s ease }

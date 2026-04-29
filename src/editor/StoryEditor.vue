@@ -610,7 +610,7 @@ defineExpose({
   cursor: pointer;
   transition: all 0.12s;
 }
-.bubble-break:hover { background: rgba(124,92,191,0.15) }
+.bubble-break:hover { background: rgba(255,142,110,0.15) }
 
 .bubble-autotag {
   background: rgba(124,92,191,0.1);
@@ -654,7 +654,7 @@ defineExpose({
 :deep(.prose-editor) code {
   font-family: var(--font-mono);
   font-size: 12px;
-  background: rgba(124, 92, 191, 0.15);
+  background: rgba(255, 142, 110, 0.15);
   padding: 1px 5px;
   border-radius: 3px;
   color: var(--color-accent);

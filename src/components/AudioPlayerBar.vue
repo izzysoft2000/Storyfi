@@ -116,9 +116,9 @@ const hasReadyAudio = computed(() =>
 // ─── Waveform drawing ─────────────────────────────────────────────────────────
 
 // Accent colour — matches --color-accent. Read once to avoid style recalc per frame.
-const ACCENT     = '#7c5cbf'
-const ACCENT_LIT = '#a78bfa'   // playhead
-const UNPLAYED   = 'rgba(255,255,255,0.12)'
+const ACCENT     = 'var(--color-accent)'
+const ACCENT_LIT = '#ffb49a'   // playhead — lighter coral
+const UNPLAYED   = 'rgba(255,255,255,0.10)'
 const PLAYED     = ACCENT
 
 function drawWaveform() {
@@ -264,7 +264,7 @@ function onCanvasTouch(e) {
 /* ── Shell ──────────────────────────────────────────────────────────────────── */
 .audio-player-bar {
   flex-shrink: 0;
-  background: var(--color-surface-raised, #1e1a2e);
+  background: var(--color-surface-raised, #2a222a);
   border-top: 1px solid var(--color-border, rgba(255 255 255 / 0.08));
   padding: 10px 14px 10px;
   display: flex;
@@ -360,7 +360,7 @@ function onCanvasTouch(e) {
   color: #fff;
 }
 .player-btn--primary:disabled {
-  background: var(--color-surface-raised, #1e1a2e);
+  background: var(--color-surface-raised, #2a222a);
   border-color: var(--color-border, rgba(255 255 255 / 0.08));
   color: var(--color-text-muted, rgba(255 255 255 / 0.25));
 }
