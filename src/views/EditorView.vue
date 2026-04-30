@@ -1159,8 +1159,8 @@ function goLibrary() { emit('go-library') }
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .m-workspace {
-  position: relative;
-  height: 100dvh;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1170,9 +1170,6 @@ function goLibrary() { emit('go-library') }
 
 @media (display-mode: standalone) {
   .m-workspace {
-    position: fixed;
-    inset: 0;
-    height: auto;
     padding-top: env(safe-area-inset-top);
   }
 }
