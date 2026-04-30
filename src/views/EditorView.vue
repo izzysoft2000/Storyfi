@@ -39,7 +39,7 @@
       <div class="m-panels__track" :style="trackStyle">
 
         <!-- ── Cast panel ── -->
-        <div class="m-panel">
+        <div class="m-panel" :class="{ 'm-panel--inactive': activePanel !== 'cast' }">
           <div class="m-panel-toolbar">
             <span class="m-panel-title">VOICE CAST</span>
             <span class="m-panel-badge">{{ store.cast.length }}/10</span>
@@ -54,7 +54,7 @@
         </div>
 
         <!-- ── Editor panel ── -->
-        <div class="m-panel">
+        <div class="m-panel" :class="{ 'm-panel--inactive': activePanel !== 'editor' }">
 
           <!-- Tag mode toolbar (default) -->
           <div v-if="mobileTagMode" class="m-panel-toolbar m-panel-toolbar--tagmode">
@@ -117,7 +117,7 @@
         </div>
 
         <!-- ── Playlist panel ── -->
-        <div class="m-panel">
+        <div class="m-panel" :class="{ 'm-panel--inactive': activePanel !== 'playlist' }">
           <PlaylistPane
             :ref="el => { if (el) playlistRef = el }"
             :has-tagged-spans="taggedSpans.length > 0"
@@ -1303,6 +1303,20 @@ function goLibrary() { emit('go-library') }
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+}
+
+/* Hide off-screen panels so they don't bleed through on iOS Safari.
+   visibility:hidden is applied after the slide transition ends (transition-delay).
+   During the slide itself the panel is visible so it animates correctly. */
+.m-panel--inactive {
+  visibility: hidden;
+  pointer-events: none;
+  transition: visibility 0s linear 0.28s; /* delay matches slide duration */
+}
+.m-panel:not(.m-panel--inactive) {
+  visibility: visible;
+  pointer-events: auto;
+  transition: visibility 0s linear 0s;
 }
 
 /* ─── Cast drawer ──────────────────────────────────────────────────────────── */
