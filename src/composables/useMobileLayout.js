@@ -43,8 +43,11 @@ export function useMobileLayout() {
   }
 
   // ─── Track style — tab navigation only, no swipe ──────────────────────────
+  // Use window.innerWidth px instead of 100vw — on iOS Safari, `vw` includes
+  // the browser chrome/scrollbar and can differ from the actual rendered panel
+  // width, causing cumulative drift when switching panels.
   const trackStyle = computed(() => ({
-    transform:  `translateX(${-panelIndex.value * 100}vw)`,
+    transform:  `translateX(${-panelIndex.value * windowWidth.value}px)`,
     transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
   }))
 

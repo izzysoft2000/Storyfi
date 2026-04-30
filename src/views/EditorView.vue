@@ -1291,13 +1291,13 @@ function goLibrary() { emit('go-library') }
   position: absolute;
   top: 0; left: 0;
   display: flex;
-  width: 300vw;
+  width: 300%;
   height: 100%;
   will-change: transform;
 }
 
 .m-panel {
-  width: 100vw;
+  width: calc(100% / 3);
   height: 100%;
   overflow: hidden;
   display: flex;
