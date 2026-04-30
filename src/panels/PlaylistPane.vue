@@ -75,7 +75,7 @@
     </div>
 
     <!-- Body -->
-    <div class="playlist-body">
+    <div class="playlist-body" ref="playlistBodyEl">
 
       <!-- Nothing tagged yet -->
       <div v-if="gen.groups.length === 0 && taggedSpans.length === 0" class="playlist-empty">
@@ -196,7 +196,6 @@ const props = defineProps({
   hasTaggedSpans: { type: Boolean, default: false },
   taggedSpans:    { type: Array,   default: () => [] },
   isOnline:       { type: Boolean, default: true },
-  isVisible:      { type: Boolean, default: true },  // false when panel is off-screen (mobile)
 })
 
 const emit = defineEmits(['generate', 'regenerate-selected', 'delete-selected', 'regenerate-group', 'auto-tag', 'export', 'focus-sentence'])
@@ -204,6 +203,21 @@ const emit = defineEmits(['generate', 'regenerate-selected', 'delete-selected', 
 const gen      = useGenerationStore()
 const playback = usePlaybackStore()
 const expanded = ref({})
+const playlistBodyEl = ref(null)
+
+// Scroll an element into view within the playlist body container ONLY.
+// Never uses scrollIntoView() which can propagate to parent containers
+// and shift the mobile panel track on iOS Safari.
+function scrollIntoContainer(selector) {
+  const body = playlistBodyEl.value
+  if (!body) return
+  const el = body.querySelector(selector)
+  if (!el) return
+  const bodyRect = body.getBoundingClientRect()
+  const elRect   = el.getBoundingClientRect()
+  const offset   = elRect.top - bodyRect.top - bodyRect.height / 2 + elRect.height / 2
+  body.scrollBy({ top: offset, behavior: 'smooth' })
+}
 
 const hasReadyAudio = computed(() => gen.groups.some(g => g.stitchStatus === 'ready'))
 
@@ -337,12 +351,11 @@ async function jumpTo(groupId, sentenceId) {
   // 2. Wait a tick for the DOM to render the sentence rows
   await new Promise(r => setTimeout(r, 60))
 
-  // 3. Find and scroll the sentence row into view
+  // 3. Find and scroll the sentence row into view (within the playlist body only)
   const selector = sentenceId
     ? `[data-sentence-id="${sentenceId}"]`
     : `[data-group-id="${groupId}"]`
-  const el = document.querySelector(selector)
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  scrollIntoContainer(selector)
 
   // 4. Blink the row
   blinkingId.value = sentenceId ?? groupId
@@ -352,9 +365,6 @@ async function jumpTo(groupId, sentenceId) {
 // ── Follow mode — auto-expand + scroll to active sentence ────────────────────
 watch(() => playback.currentSentenceId, async (sentenceId) => {
   if (!playback.followMode || !sentenceId) return
-  // Don't scrollIntoView when panel is off-screen — iOS Safari scrolls the
-  // whole document to find the element, shifting the panel track.
-  if (!props.isVisible) return
 
   const group = gen.groups.find(g => g.sentences?.some(s => s.id === sentenceId))
   if (!group) return
@@ -364,8 +374,7 @@ watch(() => playback.currentSentenceId, async (sentenceId) => {
     await nextTick()
   }
 
-  const el = document.querySelector(`[data-sentence-id="${sentenceId}"]`)
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  scrollIntoContainer(`[data-sentence-id="${sentenceId}"]`)
 })
 
 defineExpose({ jumpTo })
