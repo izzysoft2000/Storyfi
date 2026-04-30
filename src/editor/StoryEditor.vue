@@ -78,7 +78,7 @@
     </BubbleMenu>
 
     <!-- Editor Content -->
-    <div class="editor-scroll">
+    <div class="editor-scroll" ref="editorScrollEl">
       <EditorContent :editor="editor" class="editor-content" />
     </div>
 
@@ -252,7 +252,8 @@ watch(editor, (ed) => { if (ed) applyTagMode(props.tagMode) })
 
 // ─── Auto-scroll helper ───────────────────────────────────────────────────────
 // Scrolls the editor-scroll container so the highlighted position is centred.
-// Uses domAtPos to find the DOM node, then scrollIntoView on the scroll parent.
+// Uses scrollBy on the scroll container directly — never scrollIntoView, which
+// can propagate to parent containers and shift the mobile panel track on iOS.
 const editorScrollEl = ref(null)
 
 function scrollHighlightIntoView(from) {
@@ -263,8 +264,15 @@ function scrollHighlightIntoView(from) {
     const node = domInfo.node.nodeType === Node.TEXT_NODE
       ? domInfo.node.parentElement
       : domInfo.node
-    if (!node?.scrollIntoView) return
-    node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (!node) return
+
+    const scrollEl = editorScrollEl.value
+    if (!scrollEl) return
+
+    const scrollRect = scrollEl.getBoundingClientRect()
+    const nodeRect   = node.getBoundingClientRect()
+    const offset     = nodeRect.top - scrollRect.top - scrollRect.height / 2 + nodeRect.height / 2
+    scrollEl.scrollBy({ top: offset, behavior: 'smooth' })
   } catch (_) {
     // domAtPos can throw for out-of-bound positions — silently ignore
   }
@@ -352,6 +360,7 @@ defineExpose({
     if (!editor.value?.view) return
     editor.value.view.dispatch(
       editor.value.state.tr.setMeta(playbackHighlightKey, { from, to, type: 'word' })
+        .setMeta('addToHistory', false)
     )
     scrollHighlightIntoView(from)
   },
@@ -361,6 +370,7 @@ defineExpose({
     if (!editor.value?.view) return
     editor.value.view.dispatch(
       editor.value.state.tr.setMeta(playbackHighlightKey, { from, to, type: 'sentence' })
+        .setMeta('addToHistory', false)
     )
     scrollHighlightIntoView(from)
   },
