@@ -14,6 +14,13 @@
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
       <span class="app-version" title="Built: 2026-04-29 17:42 EDT">v2.2</span>
+      <button
+        class="lib-theme-btn"
+        :title="isDark ? 'Switch to Light mode' : 'Switch to Dark mode'"
+        @click="toggleTheme"
+      >
+        <span v-if="isDark">☀</span><span v-else>🌙</span>
+      </button>
     </header>
 
     <!-- Project Grid -->
@@ -168,10 +175,12 @@ import { getAllProjects, saveProject, deleteProjectFull, clearProjectAudio } fro
 import { formatBytes } from '@/storage/quota.js'
 import { requestPersistentStorage, isPersistent } from '@/storage/quota.js'
 import { useProjectStore } from '@/store/project.js'
+import { useTheme } from '@/composables/usePanelLayout.js'
 
 const emit = defineEmits(['open-project', 'install'])
 
 const store          = useProjectStore()
+const { isDark, toggleTheme } = useTheme()
 const projects       = ref([])
 const loading        = ref(true)
 const storageBarRef  = ref(null)
@@ -419,6 +428,28 @@ function relativeDate(ts) {
   color: var(--color-text-muted);
   opacity: 0.35;
   letter-spacing: 0.05em;
+}
+
+.lib-theme-btn {
+  position: absolute;
+  top: 8px;
+  right: 46px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.lib-theme-btn:hover {
+  background: var(--color-surface);
+  color: var(--color-accent);
 }
 
 .library__brand { display: flex; flex-direction: column; gap: 2px }

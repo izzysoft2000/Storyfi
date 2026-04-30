@@ -23,6 +23,9 @@
         @keydown.esc="editingTitle = false"
       />
       <span v-if="!isOnline" class="m-status-globe m-status-globe--offline" title="Offline">🌐</span>
+      <button class="m-tb-btn" :title="isDark ? 'Switch to Light mode' : 'Switch to Dark mode'" @click="toggleTheme">
+        <span v-if="isDark">☀</span><span v-else>🌙</span>
+      </button>
       <button class="m-tb-btn" @click="settingsRef?.open()">⚙</button>
     </header>
 
@@ -207,6 +210,9 @@
       <div class="wst-group wst-group--right">
         <button class="wst-btn" title="Reset panel layout" @click="resetLayout">⊞ Reset Layout</button>
         <div class="wst-divider" />
+        <button class="wst-btn theme-toggle-btn" :title="isDark ? 'Switch to Light mode' : 'Switch to Dark mode'" @click="toggleTheme">
+          <span v-if="isDark">☀ Light</span><span v-else>🌙 Dark</span>
+        </button>
         <button class="wst-btn" title="Settings" @click="settingsRef?.open()">⚙ Settings</button>
       </div>
 
@@ -398,6 +404,7 @@ import { useOnlineStatus }    from '@/composables/useOnlineStatus.js'
 import { usePanelLayout }     from '@/composables/usePanelLayout.js'
 import { useMobileLayout }    from '@/composables/useMobileLayout.js'
 import { draggingPanelId, activeDropZone, isActiveZone } from '@/composables/usePanelDrag.js'
+import { useTheme }           from '@/composables/usePanelLayout.js'
 
 // ─── TTS providers ────────────────────────────────────────────────────────────
 import { registerProvider } from '@/tts/provider.js'
@@ -442,6 +449,7 @@ const gen      = useGenerationStore()
 const playback = usePlaybackStore()
 const { isOnline } = useOnlineStatus()
 const { layout, movePanel, insertInNewColumn, setColumnWidth, resetLayout } = usePanelLayout()
+const { isDark, toggleTheme } = useTheme()
 const {
   isMobile, isPortrait,
   activePanel, setActivePanel,

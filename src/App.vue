@@ -20,6 +20,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import LibraryView from '@/views/LibraryView.vue'
 import EditorView  from '@/views/EditorView.vue'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
+import { useTheme } from '@/composables/usePanelLayout'
+
+const { initTheme } = useTheme()
 
 const view            = ref('library')
 const activeProjectId = ref(null)
@@ -77,6 +80,7 @@ function onEdgeTouch(e) {
 }
 
 onMounted(() => {
+  initTheme()
   parseHash()
   window.addEventListener('hashchange', onHashChange)
   if (window.matchMedia('(max-width: 768px)').matches) {
@@ -113,7 +117,25 @@ onUnmounted(() => {
   --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
 }
 
-/* ─── Reset ──────────────────────────────────────────── */
+/* ─── Light Mode Tokens ──────────────────────────────── */
+[data-theme="light"] {
+  --color-bg:           #f5f0f2;
+  --color-surface:      #ffffff;
+  --color-surface-soft: #ede6e9;
+  --color-border:       rgba(0,0,0,0.10);
+  --color-accent:       #d4522a;
+  --color-accent2:      oklch(50% 0.18 320);
+  --color-highlight:    oklch(50% 0.18 320);
+  --color-text:         #1a1418;
+  --color-text-muted:   #7a5a62;
+  --color-text-faint:   #c0a8b0;
+  --color-on-accent:    #ffffff;
+  --color-success:      #16a34a;
+  --color-warning:      #b45309;
+  --color-error:        #dc2626;
+}
+
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
 
 html, body {

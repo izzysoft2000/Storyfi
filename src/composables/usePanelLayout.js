@@ -141,3 +141,37 @@ export function usePanelLayout() {
 
   return { layout, movePanel, insertInNewColumn, setColumnWidth, resetLayout }
 }
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+// Singleton: one isDark ref shared across all components.
+// ref and watch are already imported above.
+
+const THEME_KEY = 'storyfi-theme'
+const isDark = ref(true)
+
+function applyTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+}
+
+export function useTheme() {
+  function initTheme() {
+    const saved = localStorage.getItem(THEME_KEY)
+    if (saved !== null) {
+      isDark.value = saved === 'dark'
+    } else {
+      isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
+    }
+    applyTheme(isDark.value)
+  }
+
+  function toggleTheme() {
+    isDark.value = !isDark.value
+  }
+
+  watch(isDark, (dark) => {
+    applyTheme(dark)
+    localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light')
+  })
+
+  return { isDark, toggleTheme, initTheme }
+}

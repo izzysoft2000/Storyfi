@@ -107,9 +107,9 @@ function drawWaveform() {
 
   const data     = playback.waveformData
   const progress = playback.progress
-  const baseline = H - 2   // 2px from bottom
-  const px       = progress * W
   const DOT_R    = 5
+  const baseline = H - (DOT_R + 4)   // keep dot+glow (r=8) fully within canvas
+  const px       = progress * W
 
   if (!data || data.length === 0) {
     // ── Flat progress track (browser TTS) ─────────────────────────────
@@ -331,8 +331,8 @@ function onCanvasTouch(e) {
   white-space: nowrap;
   backdrop-filter: blur(2px);
 }
-.player-time--current { left: 8px; top: 4px; transform: none; }
-.player-time--total   { right: 8px; top: 4px; transform: none; }
+.player-time--current { left: 8px; top: 0; transform: none; }
+.player-time--total   { right: 8px; top: 0; transform: none; }
 
 /* follow toggle moved to PlaylistPane sel-header */
 

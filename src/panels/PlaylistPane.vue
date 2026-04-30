@@ -536,7 +536,7 @@ defineExpose({ jumpTo })
 /* Sentence sub-rows */
 .sentence-rows {
   border-top: 1px solid var(--color-border);
-  padding: 4px 8px 6px 28px;
+  padding: 4px 8px 6px 6px;
   display: flex; flex-direction: column; gap: 2px;
 }
 @keyframes playlist-blink {

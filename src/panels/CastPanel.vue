@@ -959,7 +959,8 @@ function modelCostLabel(model) {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  width: 340px;
+  width: 430px;
+  max-width: calc(100vw - 24px);
   max-height: 80vh;
   display: flex;
   flex-direction: column;
