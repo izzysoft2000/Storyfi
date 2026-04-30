@@ -252,13 +252,8 @@
                 <span class="panel-badge">{{ store.cast.length }}/10</span>
               </template>
 
-              <!-- Playlist: Generate + Export in panel bar -->
+              <!-- Playlist: Export only in panel bar; Generate lives in playlist header -->
               <template v-if="panelId === 'playlist'" #bar-right>
-                <button
-                  class="panel-tb-btn panel-tb-btn--primary"
-                  :disabled="gen.isGenerating || (!taggedSpans.length && !gen.groups.length) || !isOnline"
-                  @click="onGenerate"
-                >{{ gen.isGenerating ? '⟳ Generating…' : '▶ Generate' }}</button>
                 <button
                   class="panel-tb-btn"
                   :disabled="!gen.groups.some(g => g.stitchStatus === 'ready')"

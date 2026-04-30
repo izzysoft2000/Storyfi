@@ -1,19 +1,22 @@
 <template>
   <div class="playlist-pane">
 
-    <!-- Selection header -->
-    <div v-if="gen.groups.length > 0" class="playlist-sel-header">
-      <input type="checkbox" class="sel-checkbox"
-        :checked="allSelected"
-        :indeterminate.prop="someSelected && !allSelected"
-        title="Select all"
-        @change="toggleSelectAll"
-      />
-      <span class="sel-col sel-col--count">({{ gen.groups.length }})</span>
-      <span class="sel-col sel-col--time">{{ fmtTotal(totalEstimatedMs) }}</span>
+    <!-- Selection / Generate header -->
+    <div v-if="gen.groups.length > 0 || taggedSpans.length > 0" class="playlist-sel-header">
+      <template v-if="gen.groups.length > 0">
+        <input type="checkbox" class="sel-checkbox"
+          :checked="allSelected"
+          :indeterminate.prop="someSelected && !allSelected"
+          title="Select all"
+          @change="toggleSelectAll"
+        />
+        <span class="sel-col sel-col--count">({{ gen.groups.length }})</span>
+        <span class="sel-col sel-col--time">{{ fmtTotal(totalEstimatedMs) }}</span>
+      </template>
 
-      <!-- Follow mode toggle — now in toolbar -->
+      <!-- Follow mode toggle -->
       <button
+        v-if="gen.groups.length > 0"
         class="follow-toggle"
         :class="{ 'follow-toggle--on': playback.followMode }"
         :title="playback.followMode ? 'Following active sentence (click to disable)' : 'Follow active sentence'"
@@ -27,14 +30,25 @@
         </svg>
       </button>
 
-      <div v-if="someSelected" class="sel-actions">
-        <button class="sel-action-btn sel-action-btn--regen"
-          :disabled="!isOnline || gen.isGenerating"
-          @click="emit('regenerate-selected', [...selectedIds])"
-        >↺ Re-Generate ({{ selectedIds.size }})</button>
-        <button class="sel-action-btn sel-action-btn--delete"
-          @click="onDeleteSelected"
-        >✕ Delete ({{ selectedIds.size }})</button>
+      <!-- Generate / Re-Generate / Delete inline actions -->
+      <div class="sel-actions sel-actions--right">
+        <!-- No selection: plain Generate -->
+        <button v-if="!someSelected"
+          class="sel-action-btn sel-action-btn--generate"
+          :disabled="gen.isGenerating || (!taggedSpans.length && !gen.groups.length) || !isOnline"
+          @click="emit('generate')"
+        >{{ gen.isGenerating ? '⟳ Generating…' : '▶ Generate' }}</button>
+
+        <!-- Selection: Re-Gen + Delete with responsive labels -->
+        <template v-else>
+          <button class="sel-action-btn sel-action-btn--regen"
+            :disabled="!isOnline || gen.isGenerating"
+            @click="emit('regenerate-selected', [...selectedIds])"
+          ><span class="btn-label-full">↺ Re-Generate ({{ selectedIds.size }})</span><span class="btn-label-short">↺ Re-Gen ({{ selectedIds.size }})</span></button>
+          <button class="sel-action-btn sel-action-btn--delete"
+            @click="onDeleteSelected"
+          ><span class="btn-label-full">✕ Delete ({{ selectedIds.size }})</span><span class="btn-label-short">✕ Del ({{ selectedIds.size }})</span></button>
+        </template>
       </div>
     </div>
 
@@ -467,13 +481,14 @@ defineExpose({ jumpTo })
 .expand-btn { font-size: 10px; color: var(--color-text-muted) }
 
 .playlist-sel-header {
-  display: grid; grid-template-columns: 20px auto auto 1fr;
-  align-items: center; gap: 6px; padding: 5px 8px; min-height: 32px;
+  display: flex; align-items: center; gap: 6px; padding: 5px 8px; min-height: 32px;
   border-bottom: 1px solid var(--color-border); background: var(--color-surface);
+  overflow: hidden; container-type: inline-size; container-name: playlist-header;
 }
 .sel-checkbox { width: 14px; height: 14px; accent-color: var(--color-accent); cursor: pointer; flex-shrink: 0; }
-.sel-col { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); opacity: 0.7; white-space: nowrap; }
-.sel-actions { display: flex; gap: 6px; justify-content: flex-end; grid-column: 4; }
+.sel-col { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
+.sel-actions { display: flex; gap: 5px; margin-left: auto; flex-shrink: 0; align-items: center; }
+.sel-actions--right { margin-left: auto; }
 
 /* Follow toggle in sel-header */
 .follow-toggle {
@@ -496,10 +511,19 @@ defineExpose({ jumpTo })
 }
 .sel-action-btn { all: unset; cursor: pointer; font-size: 11px; font-family: var(--font-ui); padding: 3px 9px; border-radius: 6px; white-space: nowrap; transition: background 0.12s; }
 .sel-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.sel-action-btn--generate { background: var(--color-accent); color: #fff; }
+.sel-action-btn--generate:hover:not(:disabled) { background: #e07050; }
 .sel-action-btn--regen { background: var(--color-accent); color: #fff; }
 .sel-action-btn--regen:hover:not(:disabled) { background: #e07050; }
 .sel-action-btn--delete { background: rgba(248,113,113,0.15); color: var(--color-error); border: 1px solid rgba(248,113,113,0.3); }
 .sel-action-btn--delete:hover:not(:disabled) { background: rgba(248,113,113,0.25); }
+/* Responsive button labels: show full text by default, short when space is tight */
+.btn-label-short { display: none; }
+.btn-label-full  { display: inline; }
+@container playlist-header (max-width: 320px) {
+  .btn-label-full  { display: none; }
+  .btn-label-short { display: inline; }
+}
 
 .group-row__role {
   font-size: 10px; font-weight: 600; text-transform: uppercase;
