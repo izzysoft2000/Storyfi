@@ -1291,8 +1291,10 @@ function goLibrary() { emit('go-library') }
 }
 
 .m-panels__track {
+  position: absolute;
+  top: 0; left: 0;
   display: flex;
-  width: 300vw;      /* 3 panels × 100vw — use vw not % to match transform */
+  width: 300vw;
   height: 100%;
   will-change: transform;
 }
