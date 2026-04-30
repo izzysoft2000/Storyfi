@@ -100,6 +100,7 @@ onUnmounted(() => {
   --color-bg:         #1a1418;
   --color-surface:    #221b20;
   --color-surface-soft: #2a222a;
+  --color-surface-raised: #2a222a;
   --color-border:     rgba(255,255,255,0.06);
   --color-accent:     #ff8e6e;
   --color-accent2:    oklch(70% 0.18 320);
@@ -122,6 +123,7 @@ onUnmounted(() => {
   --color-bg:           #f5f0f2;
   --color-surface:      #ffffff;
   --color-surface-soft: #ede6e9;
+  --color-surface-raised: #e8e0e4;
   --color-border:       rgba(0,0,0,0.10);
   --color-accent:       #d4522a;
   --color-accent2:      oklch(50% 0.18 320);
