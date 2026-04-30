@@ -1,20 +1,49 @@
 <template>
   <div class="playlist-pane">
 
-    <!-- Selection / Generate header -->
+    <!-- Selection / Generate header — grid mirrors group-row__header columns -->
     <div v-if="gen.groups.length > 0 || taggedSpans.length > 0" class="playlist-sel-header">
-      <template v-if="gen.groups.length > 0">
-        <input type="checkbox" class="sel-checkbox"
-          :checked="allSelected"
-          :indeterminate.prop="someSelected && !allSelected"
-          title="Select all"
-          @change="toggleSelectAll"
-        />
-        <span class="sel-col sel-col--count">({{ gen.groups.length }})</span>
-        <span class="sel-col sel-col--time">{{ fmtTotal(totalEstimatedMs) }}</span>
-      </template>
+      <!-- Col 1: master checkbox -->
+      <input v-if="gen.groups.length > 0" type="checkbox" class="sel-checkbox"
+        :checked="allSelected"
+        :indeterminate.prop="someSelected && !allSelected"
+        title="Select all"
+        @change="toggleSelectAll"
+      />
+      <span v-else class="sel-spacer" />
 
-      <!-- Follow mode toggle -->
+      <!-- Col 2: expand placeholder -->
+      <span class="sel-spacer" />
+
+      <!-- Col 3–4: Generate (left, above role+text) or Re-Gen + Delete when selected -->
+      <div class="sel-generate-area">
+        <template v-if="!someSelected">
+          <button
+            class="sel-action-btn sel-action-btn--generate"
+            :disabled="gen.isGenerating || (!taggedSpans.length && !gen.groups.length) || !isOnline"
+            @click="emit('generate')"
+          >{{ gen.isGenerating ? '⟳ Generating…' : '▶ Generate' }}</button>
+        </template>
+        <template v-else>
+          <button class="sel-action-btn sel-action-btn--regen"
+            :disabled="!isOnline || gen.isGenerating"
+            @click="emit('regenerate-selected', [...selectedIds])"
+          ><span class="btn-label-full">↺ Re-Generate ({{ selectedIds.size }})</span><span class="btn-label-short">↺ Re-Gen ({{ selectedIds.size }})</span></button>
+          <button class="sel-action-btn sel-action-btn--delete"
+            @click="onDeleteSelected"
+          ><span class="btn-label-full">✕ Delete ({{ selectedIds.size }})</span><span class="btn-label-short">✕ Del ({{ selectedIds.size }})</span></button>
+        </template>
+      </div>
+
+      <!-- Col 5: group count — above (n) sentence count -->
+      <span v-if="gen.groups.length > 0" class="sel-col sel-col--count">({{ gen.groups.length }})</span>
+      <span v-else class="sel-spacer" />
+
+      <!-- Col 6: total duration — above per-group duration -->
+      <span v-if="gen.groups.length > 0" class="sel-col sel-col--time">{{ fmtTotal(totalEstimatedMs) }}</span>
+      <span v-else class="sel-spacer" />
+
+      <!-- Col 7: follow toggle — above status dot -->
       <button
         v-if="gen.groups.length > 0"
         class="follow-toggle"
@@ -29,27 +58,7 @@
             d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2"/>
         </svg>
       </button>
-
-      <!-- Generate / Re-Generate / Delete inline actions -->
-      <div class="sel-actions sel-actions--right">
-        <!-- No selection: plain Generate -->
-        <button v-if="!someSelected"
-          class="sel-action-btn sel-action-btn--generate"
-          :disabled="gen.isGenerating || (!taggedSpans.length && !gen.groups.length) || !isOnline"
-          @click="emit('generate')"
-        >{{ gen.isGenerating ? '⟳ Generating…' : '▶ Generate' }}</button>
-
-        <!-- Selection: Re-Gen + Delete with responsive labels -->
-        <template v-else>
-          <button class="sel-action-btn sel-action-btn--regen"
-            :disabled="!isOnline || gen.isGenerating"
-            @click="emit('regenerate-selected', [...selectedIds])"
-          ><span class="btn-label-full">↺ Re-Generate ({{ selectedIds.size }})</span><span class="btn-label-short">↺ Re-Gen ({{ selectedIds.size }})</span></button>
-          <button class="sel-action-btn sel-action-btn--delete"
-            @click="onDeleteSelected"
-          ><span class="btn-label-full">✕ Delete ({{ selectedIds.size }})</span><span class="btn-label-short">✕ Del ({{ selectedIds.size }})</span></button>
-        </template>
-      </div>
+      <span v-else class="sel-spacer" />
     </div>
 
     <!-- Progress bar -->
@@ -481,13 +490,18 @@ defineExpose({ jumpTo })
 .expand-btn { font-size: 10px; color: var(--color-text-muted) }
 
 .playlist-sel-header {
-  display: flex; align-items: center; gap: 6px; padding: 5px 8px; min-height: 32px;
+  display: grid;
+  grid-template-columns: 20px 14px 1fr auto auto auto;
+  align-items: center; gap: 6px; padding: 5px 8px; min-height: 32px;
   border-bottom: 1px solid var(--color-border); background: var(--color-surface);
-  overflow: hidden; container-type: inline-size; container-name: playlist-header;
+  container-type: inline-size; container-name: playlist-header;
 }
+.sel-spacer { display: block; }
+.sel-generate-area { display: flex; gap: 5px; align-items: center; grid-column: span 1; overflow: hidden; }
 .sel-checkbox { width: 14px; height: 14px; accent-color: var(--color-accent); cursor: pointer; flex-shrink: 0; }
 .sel-col { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); opacity: 0.7; white-space: nowrap; flex-shrink: 0; }
-.sel-actions { display: flex; gap: 5px; margin-left: auto; flex-shrink: 0; align-items: center; }
+.sel-col--time { min-width: 42px; text-align: right; }
+.sel-actions { display: flex; gap: 5px; align-items: center; }
 .sel-actions--right { margin-left: auto; }
 
 /* Follow toggle in sel-header */
