@@ -58,6 +58,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { usePlaybackStore } from '../store/playback.js'
+import { useTheme } from '../composables/usePanelLayout.js'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ const props = defineProps({
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 const playback = usePlaybackStore()
+const { isDark } = useTheme()
 
 // ─── Refs ─────────────────────────────────────────────────────────────────────
 
@@ -81,11 +83,20 @@ const hasReadyAudio = computed(() =>
 
 // ─── Waveform drawing ─────────────────────────────────────────────────────────
 
-// Accent colour — matches --color-accent. Read once to avoid style recalc per frame.
-const ACCENT     = 'var(--color-accent)'
-const ACCENT_LIT = '#ffb49a'   // playhead — lighter coral
-const UNPLAYED   = 'rgba(255,255,255,0.10)'
-const PLAYED     = ACCENT
+// Read colours from CSS variables so light/dark mode is respected.
+// Called at the start of each draw — cheap (one getComputedStyle per frame).
+function getDrawColors() {
+  const style = getComputedStyle(document.documentElement)
+  const accent  = style.getPropertyValue('--color-accent').trim() || '#ff8e6e'
+  const isDark  = document.documentElement.getAttribute('data-theme') !== 'light'
+  return {
+    accent,
+    accentLit: isDark ? '#ffb49a' : '#c04020',
+    unplayed:  isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.12)',
+    dotGlow:   isDark ? 'rgba(255,180,154,0.20)' : 'rgba(180,60,20,0.15)',
+    dotGlowRing: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+  }
+}
 
 function drawWaveform() {
   const canvas = canvasEl.value
@@ -105,6 +116,7 @@ function drawWaveform() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, W, H)
 
+  const C        = getDrawColors()
   const data     = playback.waveformData
   const progress = playback.progress
   const DOT_R    = 5
@@ -116,7 +128,7 @@ function drawWaveform() {
     const trackH = 3
 
     // Track bg
-    ctx.fillStyle = UNPLAYED
+    ctx.fillStyle = C.unplayed
     ctx.beginPath()
     ctx.roundRect ? ctx.roundRect(0, baseline - trackH, W, trackH, 1.5)
                   : ctx.rect(0, baseline - trackH, W, trackH)
@@ -124,7 +136,7 @@ function drawWaveform() {
 
     // Played portion
     if (px > 0) {
-      ctx.fillStyle = PLAYED
+      ctx.fillStyle = C.accent
       ctx.beginPath()
       ctx.roundRect ? ctx.roundRect(0, baseline - trackH, px, trackH, 1.5)
                     : ctx.rect(0, baseline - trackH, px, trackH)
@@ -132,7 +144,7 @@ function drawWaveform() {
     }
 
     // Dot on baseline
-    ctx.fillStyle = ACCENT_LIT
+    ctx.fillStyle = C.accentLit
     ctx.beginPath()
     ctx.arc(Math.max(DOT_R, Math.min(W - DOT_R, px)), baseline - trackH / 2, DOT_R, 0, Math.PI * 2)
     ctx.fill()
@@ -154,7 +166,7 @@ function drawWaveform() {
     const ratio  = i / bars
     const played = ratio < progress
 
-    ctx.fillStyle = played ? PLAYED : UNPLAYED
+    ctx.fillStyle = played ? C.accent : C.unplayed
     ctx.beginPath()
     if (ctx.roundRect) {
       ctx.roundRect(x, baseline - barH, bw, barH, 1)
@@ -165,17 +177,17 @@ function drawWaveform() {
   }
 
   // Baseline rule
-  ctx.fillStyle = 'rgba(255,255,255,0.08)'
+  ctx.fillStyle = C.dotGlowRing
   ctx.fillRect(0, baseline, W, 1)
 
   // Dot playhead on baseline — glow ring + dot
   const dotX = Math.max(DOT_R, Math.min(W - DOT_R, px))
-  ctx.fillStyle = 'rgba(255,180,154,0.20)'
+  ctx.fillStyle = C.dotGlow
   ctx.beginPath()
   ctx.arc(dotX, baseline, DOT_R + 3, 0, Math.PI * 2)
   ctx.fill()
 
-  ctx.fillStyle = ACCENT_LIT
+  ctx.fillStyle = C.accentLit
   ctx.beginPath()
   ctx.arc(dotX, baseline, DOT_R, 0, Math.PI * 2)
   ctx.fill()
@@ -183,6 +195,7 @@ function drawWaveform() {
 
 // Redraw on progress tick, waveform data change, or panel resize
 watch(() => [playback.progress, playback.waveformVersion], drawWaveform)
+watch(isDark, drawWaveform)
 
 let _ro = null
 onMounted(() => {
@@ -324,7 +337,7 @@ function onCanvasTouch(e) {
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
   color: var(--color-text);
-  background: rgba(26, 20, 24, 0.60);
+  background: var(--color-surface-soft, rgba(26, 20, 24, 0.60));
   padding: 1px 5px;
   border-radius: 4px;
   pointer-events: none;
