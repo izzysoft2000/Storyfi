@@ -1,8 +1,8 @@
 # Storyfi — Implementation Snapshot
 > Read this file at the start of every session before touching any code.
 > Update this file at the end of every session.
-> Last updated: 2026-04-29 (session 10)
-> Current phase: v2.2 — Studio theme, deploy pipeline, player bar redesign
+> Last updated: 2026-04-30 (session 11)
+> Current phase: v2.23 — Light/Dark mode, player fixes, voice picker, TTS gender guesser
 
 ---
 
@@ -86,7 +86,7 @@ storyfi/
     │   └── exporter.js                — exportZip / exportJSON / exportHTML / exportCSV
     ├── composables/
     │   ├── useOnlineStatus.js         — shared reactive online/offline state (navigator.onLine + events)
-    │   ├── usePanelLayout.js          — panel layout state, mutations, localStorage persistence
+    │   ├── usePanelLayout.js          — panel layout state, mutations, localStorage persistence; also exports useTheme()
     │   └── usePanelDrag.js            — ghost element, drag state, drop zone detection (non-reactive DOM)
     └── utils/
         ├── uuid.js                    — crypto.randomUUID()
@@ -1274,3 +1274,72 @@ async function onAutoTag() {
   if (newRolesAdded > 0) await nextTick()
 }
 ```
+
+## v2.23 UI Polish (session 11 — 2026-04-30)
+
+### Files changed this session
+| File | What changed |
+|---|---|
+| `src/composables/usePanelLayout.js` | `useTheme()` composable appended at bottom (no new file needed); singleton `isDark` ref, `applyTheme`, `initTheme`, `toggleTheme`, localStorage persistence, OS preference fallback |
+| `src/App.vue` | Imports `useTheme` from `usePanelLayout`; calls `initTheme()` on mount; light mode token overrides in `[data-theme="light"]` block |
+| `src/views/EditorView.vue` | ☀/🌙 toggle button in mobile toolbar (☀=light, 🌙=dark) and desktop right group ("☀ Light" / "🌙 Dark") |
+| `src/views/LibraryView.vue` | 28px circle theme button top-right of header (absolutely positioned) |
+| `src/panels/PlaylistPane.vue` | `.sentence-rows` padding changed `4px 8px 6px 28px` → `4px 8px 6px 6px` (checkbox indent fix) |
+| `src/panels/CastPanel.vue` | `.modal-box` width `340px` → `430px`; added `max-width: calc(100vw - 24px)` |
+| `src/components/AudioPlayerBar.vue` | `baseline = H - (DOT_R + 4)` (dot+glow fully visible); time label `top: 4px` → `top: 0` |
+| `src/tts/browser.js` | `guessBrowserGender(name)` function added before `getBrowserVoices`; checks explicit keywords then ~170-name lookup table; applied in `voices()` instead of hardcoded `'unknown'` |
+
+### useTheme details
+```js
+// In usePanelLayout.js (appended at bottom, after usePanelLayout function)
+// ref and watch already imported at top of file — no duplicate import
+const THEME_KEY = 'storyfi-theme'
+const isDark = ref(true)           // singleton
+export function useTheme() { ... } // initTheme, toggleTheme, isDark
+```
+Import everywhere as: `import { useTheme } from '@/composables/usePanelLayout.js'`
+
+### Light mode tokens
+```css
+[data-theme="light"] {
+  --color-bg:          #f5f0f2;
+  --color-surface:     #ffffff;
+  --color-surface-soft:#ede6e9;
+  --color-border:      rgba(0,0,0,0.10);
+  --color-accent:      #d4522a;    /* darkened coral for WCAG contrast */
+  --color-text:        #1a1418;
+  --color-text-muted:  #7a5a62;
+  --color-on-accent:   #ffffff;
+}
+```
+
+### Deploy Pipeline — CORRECT FORMAT (discovered session 11)
+The Go server (`main.go`) expects files as an **array of objects**, NOT a dict.
+The `content` field is **raw UTF-8 string** — not base64.
+
+```json
+{
+  "files": [
+    { "path": "src/views/EditorView.vue", "content": "raw utf-8 text..." },
+    { "path": "src/App.vue", "content": "raw utf-8 text..." }
+  ],
+  "message": "feat: description"
+}
+```
+
+**Deploy script approach (v5 — correct):**
+- Store file contents as base64 in the HTML (safe embedding — no `</script>` breakage)
+- In JS: `b64ToUtf8(b64)` using `TextDecoder` → produces raw UTF-8 string
+- Build payload as array before `JSON.stringify` and POST
+
+```javascript
+function b64ToUtf8(b64) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+const payload = {
+  files: Object.entries(FILES_B64).map(([path, b64]) => ({path, content: b64ToUtf8(b64)})),
+  message: "..."
+};
+```
+
