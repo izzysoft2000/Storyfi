@@ -196,6 +196,7 @@ const props = defineProps({
   hasTaggedSpans: { type: Boolean, default: false },
   taggedSpans:    { type: Array,   default: () => [] },
   isOnline:       { type: Boolean, default: true },
+  isVisible:      { type: Boolean, default: true },  // false when panel is off-screen (mobile)
 })
 
 const emit = defineEmits(['generate', 'regenerate-selected', 'delete-selected', 'regenerate-group', 'auto-tag', 'export', 'focus-sentence'])
@@ -351,6 +352,9 @@ async function jumpTo(groupId, sentenceId) {
 // ── Follow mode — auto-expand + scroll to active sentence ────────────────────
 watch(() => playback.currentSentenceId, async (sentenceId) => {
   if (!playback.followMode || !sentenceId) return
+  // Don't scrollIntoView when panel is off-screen — iOS Safari scrolls the
+  // whole document to find the element, shifting the panel track.
+  if (!props.isVisible) return
 
   const group = gen.groups.find(g => g.sentences?.some(s => s.id === sentenceId))
   if (!group) return
