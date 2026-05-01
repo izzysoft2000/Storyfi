@@ -40,7 +40,7 @@ function guessBrowserGender(name) {
   const FEMALE = new Set([
     'allison','amanda','amy','anna','aria','ashley','audrey',
     'ava','bella','beth','bria','carmen','carol','caroline',
-    'catharina','charlotte','claire','claudia','elena','elise',
+    'catharina','catherine','charlotte','claire','claudia','elena','elise',
     'elizabeth','ella','ellen','emily','emma','eva','evelyn',
     'fiona','grace','hazel','helen','hera','ida','irina',
     'isabel','isabella','jane','janet','jessica','joana','joanna',
@@ -56,6 +56,8 @@ function guessBrowserGender(name) {
     'sofia','sophie','stella','susan','sylvie','tanja','tessa',
     'tina','tracey','ting','uma','valentina','vanessa','veena',
     'vicki','victoria','vivienne','wendy','yelena','yuna','zosia',
+    'zira','cortana','eva','hedda','hortense','kalpana','heera',
+    'naayf','tracy','huihui','yaoyao','kangkang',
   ])
 
   const MALE = new Set([
