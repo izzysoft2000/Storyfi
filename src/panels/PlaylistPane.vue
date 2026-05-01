@@ -276,8 +276,11 @@ function onGroupRowClick(group, index) {
 }
 
 function onSentenceClick(s, group, groupIndex) {
-  // Jump to tagged text in editor
-  if (s.editorFrom != null) {
+  // On mobile, only jump to editor when paused/stopped — if playing, the
+  // editor auto-scrolls to the next highlight anyway, so switching mid-play
+  // is jarring and immediately gets scrolled away.
+  const canFocusEditor = !playback.isPlaying
+  if (s.editorFrom != null && canFocusEditor) {
     emit('focus-sentence', { from: s.editorFrom, to: s.editorTo })
   }
 

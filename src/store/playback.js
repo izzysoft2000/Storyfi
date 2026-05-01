@@ -60,6 +60,11 @@ let _editorRef = null
  * Built once after all buffers are decoded. Non-reactive (raw typed array).
  */
 let _waveformData = null
+
+// Browser TTS pause state — SpeechSynthesis.pause() is unreliable (especially
+// on iOS), so we cancel() immediately and re-speak from sentence start on resume.
+let _browserPausedGroupIdx   = -1
+let _browserPausedSentenceIdx = -1
 const WAVEFORM_BARS = 200
 
 // ─── Pure helpers (no Vue/Pinia dependency) ───────────────────────────────────
@@ -380,6 +385,20 @@ export const usePlaybackStore = defineStore('playback', {
 
     pause() {
       if (!this.isPlaying || this.isPaused) return
+
+      // For browser TTS: speechSynthesis.pause() is unreliable — cancel immediately
+      // and record where we are so resume() can restart from the same sentence.
+      const buf = _buffers[this.currentGroupIdx]
+      if (buf?._browserLive && 'speechSynthesis' in window) {
+        // Find the sentence index we're currently on
+        const group = buf.group
+        const sentences = group.sentences ?? []
+        const si = sentences.findIndex(s => s.id === this.currentSentenceId)
+        _browserPausedGroupIdx    = this.currentGroupIdx
+        _browserPausedSentenceIdx = Math.max(0, si)
+        speechSynthesis.cancel()
+      }
+
       _audioCtx?.suspend()
       this._stopRaf()
       this.isPlaying = false
@@ -388,6 +407,30 @@ export const usePlaybackStore = defineStore('playback', {
 
     resume() {
       if (!this.isPaused) return
+
+      // For browser TTS: we cancelled on pause, so restart from the saved sentence
+      if (_browserPausedGroupIdx >= 0) {
+        const gi = _browserPausedGroupIdx
+        const si = _browserPausedSentenceIdx
+        _browserPausedGroupIdx    = -1
+        _browserPausedSentenceIdx = -1
+        this.isPaused = false
+        // _startGroup re-enters the browser TTS loop from the beginning of the group;
+        // we manually offset si so it starts at the right sentence.
+        // Simplest: temporarily splice sentences so speakNext starts at si.
+        const buf = _buffers[gi]
+        if (buf?._browserLive) {
+          const group = buf.group
+          const allSentences = group.sentences ?? []
+          // Temporarily replace sentences with the tail starting at si
+          group.sentences = allSentences.slice(si)
+          this._startGroup(gi)
+          // Restore after one tick so generation/export aren't affected
+          setTimeout(() => { group.sentences = allSentences }, 0)
+          return
+        }
+      }
+
       _audioCtx?.resume()
       this.isPlaying = true
       this.isPaused = false
@@ -591,6 +634,8 @@ export const usePlaybackStore = defineStore('playback', {
       this.currentMs = 0
       this.currentSentenceId = null
       _waveformData = null
+      _browserPausedGroupIdx    = -1
+      _browserPausedSentenceIdx = -1
     },
 
     // ── RAF loop ──────────────────────────────────────────────────────────────
@@ -638,10 +683,13 @@ export const usePlaybackStore = defineStore('playback', {
         return
       }
 
-      // Update reactive sentence ID for playlist row highlighting
+      // Update reactive sentence ID for playlist row highlighting (always — follow-independent)
       if (this.currentSentenceId !== sentence.id) {
         this.currentSentenceId = sentence.id
       }
+
+      // ── Editor highlighting — only when followMode is on ─────────────────
+      if (!this.followMode) return
 
       // ── Word-level highlight (MiniMax only) ──────────────────────────────
 
