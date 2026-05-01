@@ -152,7 +152,7 @@
                   'sentence-row--selected': selectedIds.has(s.id),
                 }"
                 :data-sentence-id="s.id"
-                :title="'Click to locate in editor and seek player'"
+                :title="'Click to seek player to this sentence'"
                 @click="onSentenceClick(s, group, groupIndex)"
               >
                 <input type="checkbox" class="sel-checkbox sel-checkbox--sentence"
@@ -162,6 +162,13 @@
                 />
                 <span class="sentence-row__idx">{{ s.sentenceIndex + 1 }}</span>
                 <span class="sentence-row__text">{{ truncate(s.text, 50) }}</span>
+                <button
+                  v-if="s.editorFrom != null"
+                  class="sentence-row__jump"
+                  title="Jump to this sentence in the Editor"
+                  @click.stop="onJumpToEditor(s)"
+                >↗</button>
+                <span v-else class="sentence-row__jump-spacer" />
                 <span class="sentence-row__dur">{{ s.durationMs != null ? fmt(s.durationMs) : '—' }}</span>
                 <span class="sentence-row__status">
                   <span v-if="s.status === 'ready'"          class="s-dot s-dot--ok">✓</span>
@@ -276,24 +283,16 @@ function onGroupRowClick(group, index) {
 }
 
 function onSentenceClick(s, group, groupIndex) {
-  // On mobile, only jump to editor when paused/stopped — if playing, the
-  // editor auto-scrolls to the next highlight anyway, so switching mid-play
-  // is jarring and immediately gets scrolled away.
-  const canFocusEditor = !playback.isPlaying
-  if (s.editorFrom != null && canFocusEditor) {
-    emit('focus-sentence', { from: s.editorFrom, to: s.editorTo })
-  }
-
   if (group.stitchStatus !== 'ready') return
-
-  // Seek to this sentence's position in the master timeline.
-  // Never auto-starts playback — user explicitly presses Play to begin.
-  // seekToMs handles all three states:
-  //   playing  → seeks and keeps playing from new position
-  //   paused   → repositions the playhead, stays paused
-  //   stopped  → repositions currentMs so Play starts here
+  // Seek playhead to this sentence. Never auto-starts playback.
   const sentenceAbsMs = (group.startMs ?? 0) + (s.startMs ?? 0)
   playback.seekToMs(sentenceAbsMs)
+}
+
+function onJumpToEditor(s) {
+  if (s.editorFrom != null) {
+    emit('focus-sentence', { from: s.editorFrom, to: s.editorTo })
+  }
 }
 
 function firstSentenceText(group) {
@@ -607,7 +606,7 @@ defineExpose({ jumpTo })
 }
 .sentence-row--selected { background: rgba(255,142,110,0.08); }
 .sentence-row {
-  display: grid; grid-template-columns: 16px 18px 1fr auto auto;
+  display: grid; grid-template-columns: 16px 18px 1fr auto auto auto;
   align-items: center; gap: 5px; padding: 3px 4px; border-radius: 4px;
 }
 .sentence-row--clickable { cursor: pointer; }
@@ -626,6 +625,14 @@ defineExpose({ jumpTo })
   font-size: 10px; font-family: var(--font-mono);
   color: var(--color-text-muted); white-space: nowrap;
 }
+.sentence-row__jump {
+  all: unset; cursor: pointer; font-size: 11px;
+  color: var(--color-text-muted); opacity: 0.45;
+  padding: 1px 3px; border-radius: 3px; line-height: 1;
+  transition: opacity 0.12s, color 0.12s;
+}
+.sentence-row__jump:hover { opacity: 1; color: var(--color-accent); }
+.sentence-row__jump-spacer { display: block; width: 16px; }
 .sentence-row__status { display: flex; align-items: center; justify-content: center }
 .s-dot         { font-size: 10px }
 .s-dot--ok     { color: var(--color-success) }

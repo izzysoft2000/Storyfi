@@ -498,6 +498,18 @@ export const usePlaybackStore = defineStore('playback', {
         this.currentGroupIdx = offset.groupIdx
         _startedAtCtx        = (_audioCtx?.currentTime ?? 0) - offsetInGroup / 1000
         _segmentOffsetMs     = offset.startMs
+        // Update browser TTS resume position so Play restarts from the seeked sentence
+        const pausedBuf = _buffers[offset.groupIdx]
+        if (pausedBuf?._browserLive) {
+          const sentences = pausedBuf.group.sentences ?? []
+          let si = 0
+          for (let i = 0; i < sentences.length; i++) {
+            if ((sentences[i].startMs ?? 0) <= offsetInGroup) si = i
+            else break
+          }
+          _browserPausedGroupIdx    = offset.groupIdx
+          _browserPausedSentenceIdx = si
+        }
         this._syncHighlight()
       } else {
         this.currentMs       = ms
