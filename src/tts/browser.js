@@ -23,15 +23,19 @@ function guessBrowserGender(name) {
   const n = name.toLowerCase()
 
   // Explicit keywords (Google voices: "Google UK English Male")
-  if (/\bfemale\b/.test(n))             return 'female'
-  if (/\bmale\b/.test(n))               return 'male'
+  if (/\bfemale\b/.test(n))           return 'female'
+  if (/\bmale\b/.test(n))             return 'male'
   if (/\bwoman\b|\bgirl\b/.test(n))   return 'female'
   if (/\bman\b|\bguy\b/.test(n))      return 'male'
 
-  // Extract first title-cased token as the given name
+  // Extract first title-cased token that isn't a known vendor prefix
   // e.g. "Microsoft David - English (US)" → "david"
-  const m = name.match(/(?:^|\s)([A-Z][a-z]{2,})/)
-  const firstName = m ? m[1].toLowerCase() : ''
+  const VENDORS = new Set(['microsoft','google','apple','amazon','samsung','android'])
+  const tokens = name.match(/[A-Z][a-z]{1,}/g) || []
+  let firstName = ''
+  for (const t of tokens) {
+    if (!VENDORS.has(t.toLowerCase())) { firstName = t.toLowerCase(); break }
+  }
 
   const FEMALE = new Set([
     'allison','amanda','amy','anna','aria','ashley','audrey',
