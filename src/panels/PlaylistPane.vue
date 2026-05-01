@@ -191,6 +191,7 @@ import { useGenerationStore } from '@/store/generation.js'
 import { usePlaybackStore }   from '@/store/playback.js'
 import { formatDuration }     from '@/audio/timestamps.js'
 import AudioPlayerBar         from '@/components/AudioPlayerBar.vue'
+import { useMobileLayout }    from '@/composables/useMobileLayout.js'
 
 const props = defineProps({
   hasTaggedSpans: { type: Boolean, default: false },
@@ -204,11 +205,13 @@ const gen      = useGenerationStore()
 const playback = usePlaybackStore()
 const expanded = ref({})
 const playlistBodyEl = ref(null)
+const { isSwitching } = useMobileLayout()
 
 // Scroll an element into view within the playlist body container ONLY.
 // Never uses scrollIntoView() which can propagate to parent containers
 // and shift the mobile panel track on iOS Safari.
 function scrollIntoContainer(selector) {
+  if (isSwitching.value) return
   const body = playlistBodyEl.value
   if (!body) return
   const el = body.querySelector(selector)

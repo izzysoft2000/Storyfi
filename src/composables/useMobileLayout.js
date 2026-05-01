@@ -36,10 +36,18 @@ export function useMobileLayout() {
 
   const panelIndex = computed(() => PANELS.indexOf(activePanel.value))
 
+  const TRANSITION_MS = 320  // slightly longer than 0.28s animation
+  const isSwitching = ref(false)
+  let switchTimer = null
+
   function setActivePanel(panel) {
     if (!PANELS.includes(panel)) return
     activePanel.value = panel
     localStorage.setItem(LAST_PANEL_KEY, panel)
+    // Block scroll-triggering side effects during the slide transition
+    isSwitching.value = true
+    clearTimeout(switchTimer)
+    switchTimer = setTimeout(() => { isSwitching.value = false }, TRANSITION_MS)
   }
 
   // ─── Track style — tab navigation only, no swipe ──────────────────────────
@@ -54,6 +62,6 @@ export function useMobileLayout() {
   return {
     isMobile, isPortrait,
     activePanel, panelIndex, setActivePanel, PANELS,
-    trackStyle,
+    trackStyle, isSwitching,
   }
 }

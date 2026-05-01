@@ -112,6 +112,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { buildAutoTagOperations } from '@/editor/autoTagger.js'
 
 import { extractTaggedSpans }    from '@/editor/splitter.js'
+import { useMobileLayout }       from '@/composables/useMobileLayout.js'
 
 // ─── Playback highlight plugin ─────────────────────────────────────────────────
 // Drives transient ProseMirror decorations during audio playback.
@@ -255,8 +256,12 @@ watch(editor, (ed) => { if (ed) applyTagMode(props.tagMode) })
 // Uses scrollBy on the scroll container directly — never scrollIntoView, which
 // can propagate to parent containers and shift the mobile panel track on iOS.
 const editorScrollEl = ref(null)
+const { isSwitching } = useMobileLayout()
 
 function scrollHighlightIntoView(from) {
+  // Don't scroll during panel transitions — any scroll call during the slide
+  // animation can shift the panel track permanently on iOS Safari.
+  if (isSwitching.value) return
   if (!editor.value?.view) return
   try {
     const view = editor.value.view
