@@ -65,6 +65,7 @@ let _waveformData = null
 // on iOS), so we cancel() immediately and re-speak from sentence start on resume.
 let _browserPausedGroupIdx   = -1
 let _browserPausedSentenceIdx = -1
+let _browserGeneration = 0  // incremented on every new TTS session; stale closures self-cancel
 const WAVEFORM_BARS = 200
 
 // ─── Pure helpers (no Vue/Pinia dependency) ───────────────────────────────────
@@ -550,12 +551,26 @@ export const usePlaybackStore = defineStore('playback', {
 
         // Anchor the RAF clock to this group so currentMs is correct
         _segmentOffsetMs = groupOffset?.startMs ?? 0
-        _startedAtCtx    = _audioCtx?.currentTime ?? 0
+        // Anchor RAF clock so currentMs starts at the seek position, not group start
+        _startedAtCtx = (_audioCtx?.currentTime ?? 0) - offsetMs / 1000
 
         this._startRaf()
 
+        // Find the sentence index matching offsetMs so we skip past already-spoken ones
         let si = 0
+        if (offsetMs > 0) {
+          for (let i = 0; i < sentences.length; i++) {
+            if ((sentences[i].startMs ?? 0) <= offsetMs) si = i
+            else break
+          }
+        }
+
+        // Generation stamp — if _browserGeneration changes, this closure is stale
+        // and must not speak or chain to the next group.
+        const myGeneration = ++_browserGeneration
+
         const speakNext = () => {
+          if (_browserGeneration !== myGeneration) return  // stale — another session started
           if (!this.isPlaying || si >= sentences.length) {
             if (this.isPlaying) this._startGroup(groupIdx + 1)
             return
@@ -636,6 +651,7 @@ export const usePlaybackStore = defineStore('playback', {
       _waveformData = null
       _browserPausedGroupIdx    = -1
       _browserPausedSentenceIdx = -1
+      _browserGeneration++  // invalidate any in-flight speakNext closures
     },
 
     // ── RAF loop ──────────────────────────────────────────────────────────────
