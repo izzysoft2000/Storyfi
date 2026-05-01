@@ -218,7 +218,12 @@ function onPlayPause() {
   if (playback.isLoading) return
   if (playback.isPaused)       playback.resume()
   else if (playback.isPlaying) playback.pause()
-  else                         playback.loadAndPlay(props.groups, 0)
+  else {
+    // Start from wherever the playhead is positioned (sentence row tap may have
+    // pre-positioned currentGroupIdx), falling back to group 0 if not set.
+    const startIdx = playback.currentGroupIdx >= 0 ? playback.currentGroupIdx : 0
+    playback.loadAndPlay(props.groups, startIdx)
+  }
 }
 
 function onStop() { playback.stop() }

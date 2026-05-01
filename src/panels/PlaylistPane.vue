@@ -286,16 +286,14 @@ function onSentenceClick(s, group, groupIndex) {
 
   if (group.stitchStatus !== 'ready') return
 
-  // Compute absolute master-timeline position for this sentence
-  // group.startMs = absolute group start; s.startMs = offset within group
+  // Seek to this sentence's position in the master timeline.
+  // Never auto-starts playback — user explicitly presses Play to begin.
+  // seekToMs handles all three states:
+  //   playing  → seeks and keeps playing from new position
+  //   paused   → repositions the playhead, stays paused
+  //   stopped  → repositions currentMs so Play starts here
   const sentenceAbsMs = (group.startMs ?? 0) + (s.startMs ?? 0)
-
-  if (playback.isPlaying || playback.isPaused) {
-    playback.seekToMs(sentenceAbsMs)
-  } else {
-    // Cold start — load from this group then seek to sentence if not at group start
-    playback.loadAndPlay(gen.groups, groupIndex)
-  }
+  playback.seekToMs(sentenceAbsMs)
 }
 
 function firstSentenceText(group) {
