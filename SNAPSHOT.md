@@ -1343,3 +1343,56 @@ const payload = {
 };
 ```
 
+## Session 12 — 2026-04-30 (continued)
+
+### Files changed
+| File | What changed |
+|---|---|
+| `src/App.vue` | Added `--color-surface-raised` to both dark and light token blocks |
+| `src/components/AudioPlayerBar.vue` | Canvas reads live CSS vars via `getDrawColors()` each frame; imports `useTheme` and watches `isDark` to redraw on theme change; time label uses `var(--color-surface-soft)` |
+| `src/views/EditorView.vue` | Generate removed from panel bar-right (Export only remains); mobile `m-workspace` always `position:fixed; inset:0`; track `position:absolute`; panels use `calc(100%/3)` width; imports `isSwitching` |
+| `src/panels/PlaylistPane.vue` | Playlist sel-header redesigned as grid matching group rows — Generate left (above role/text), (n) and duration right (above sentence count / duration columns), follow toggle far right; `scrollIntoContainer` helper replaces all `scrollIntoView`; guarded by `isSwitching` |
+| `src/panels/CastPanel.vue` | No change this session |
+| `src/composables/useMobileLayout.js` | `setActivePanel` sets `isSwitching=true` for 320ms; `isSwitching` exported |
+| `src/editor/StoryEditor.vue` | `editorScrollEl` ref attached to `.editor-scroll` div; `scrollHighlightIntoView` uses `scrollBy` on container (not `scrollIntoView`); guarded by `isSwitching` |
+
+### iOS mobile panel misalignment — root cause & fix
+
+**Symptom:** Switching to Cast view permanently offset the panel track; Play view would accidentally "fix" Edit alignment.
+
+**Root cause chain (all three were needed):**
+1. PlaylistPane `scrollIntoView` during follow mode → propagated up to panel track
+2. StoryEditor `scrollHighlightIntoView` during playback → same propagation on every sentence change  
+3. Even after replacing with `scrollBy`, iOS could still shift layout during the 280ms slide animation
+
+**Final fix:** `isSwitching` flag in `useMobileLayout` — set for 320ms on every `setActivePanel` call. Both `scrollHighlightIntoView` (editor) and `scrollIntoContainer` (playlist) bail immediately if `isSwitching` is true.
+
+### Player bar light mode
+- `getDrawColors()` called per frame — reads `--color-accent` via `getComputedStyle`, checks `data-theme` attribute
+- Returns `{ accent, accentLit, unplayed, dotGlow, dotGlowRing }` for dark/light
+- `watch(isDark, drawWaveform)` — instant redraw on theme toggle
+
+### Playlist header redesign
+- Generate button removed from DockablePanel `#bar-right` slot (Export stays)
+- Sel-header now a 6-column grid matching group row columns: `20px 14px 1fr auto auto auto`
+- No selection: `[☐] [·] [▶ Generate ·····] [(n)] [0:12] [●]`
+- Selection: `[☐] [·] [↺ Re-Gen(n)] [✕ Del(n)] [(n)] [0:12] [●]`
+- Responsive labels via `@container` query: "Re-Gen" / "Del" when width < 320px
+
+### Key patterns established
+```js
+// Safe mobile scroll — use in any component that scrolls during playback
+const { isSwitching } = useMobileLayout()
+function safeScroll() {
+  if (isSwitching.value) return
+  // ... scrollBy on a specific container ref
+}
+
+// Safe contained scroll (replaces scrollIntoView)
+function scrollIntoContainer(containerEl, targetEl) {
+  const cRect = containerEl.getBoundingClientRect()
+  const tRect = targetEl.getBoundingClientRect()
+  const offset = tRect.top - cRect.top - cRect.height / 2 + tRect.height / 2
+  containerEl.scrollBy({ top: offset, behavior: 'smooth' })
+}
+```
