@@ -330,6 +330,16 @@ export const usePlaybackStore = defineStore('playback', {
       this.isLoading = true
       this.loadError = null
 
+      // ── iOS audio session unlock ───────────────────────────────────────────
+      // iOS expires the user-gesture context at the first `await`. Calling
+      // play() synchronously here — before any async work — locks in background-
+      // audio permission for this element. A silent WAV data URI ensures iOS
+      // accepts the call rather than rejecting it for a missing/revoked src.
+      // The real blob URL is loaded just before actual playback begins.
+      if (!_audioEl) _audioEl = new Audio()
+      _audioEl.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+      _audioEl.play().catch(() => {})
+
       _groups = groups
       _wordPositionCache = new Map()
 
