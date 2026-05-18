@@ -19,16 +19,28 @@ import { formatDuration } from '../audio/timestamps.js'
 
 // ─── Module-level Web Audio internals (non-reactive) ──────────────────────────
 
-/** @type {AudioContext|null} */
+/** @type {AudioContext|null} Used only for decodeAudioData (waveform) and browser TTS clock */
 let _audioCtx = null
 
-/** @type {(AudioBuffer|null)[]} Indexed parallel to the groups array passed to loadAndPlay() */
+/** @type {(AudioBuffer|null)[]} Decoded buffers for waveform only — NOT used for playback */
 let _buffers = []
 
-/** @type {AudioBufferSourceNode|null} Currently playing source node */
+/**
+ * Raw MP3 blobs indexed parallel to _buffers.
+ * Used as the actual playback source via <audio> element (iOS background-safe).
+ */
+let _blobs = []
+
+/** @type {HTMLAudioElement|null} Audio element for background-safe playback */
+let _audioEl = null
+
+/** @type {string|null} Object URL currently loaded into _audioEl — revoked on group change */
+let _audioBlobUrl = null
+
+/** @type {AudioBufferSourceNode|null} Kept for legacy safety; not used in normal flow */
 let _source = null
 
-/** audioCtx.currentTime captured when source.start() was called (for elapsed-time math) */
+/** audioCtx.currentTime anchor — used only for browser TTS clock (not audio element) */
 let _startedAtCtx = 0
 
 /** Global ms offset of the currently playing group's start in the master timeline */
@@ -39,6 +51,12 @@ let _rafId = null
 
 /** Snapshot of paragraphGroups[] passed to loadAndPlay() */
 let _groups = null
+
+/** @type {WakeLockSentinel|null} Screen Wake Lock — prevents display sleep during playback */
+let _wakeLock = null
+
+/** Throttle MediaSession position state updates — only push every ~1 s */
+let _lastPositionStateMs = -Infinity
 
 /**
  * Cache of computed word→editor positions.
@@ -305,8 +323,9 @@ export const usePlaybackStore = defineStore('playback', {
      *
      * @param {object[]} groups - project.paragraphGroups
      * @param {number} [startGroupIdx=0]
+     * @param {string} [projectTitle='Storyfi'] - shown on iOS lock screen
      */
-    async loadAndPlay(groups, startGroupIdx = 0) {
+    async loadAndPlay(groups, startGroupIdx = 0, projectTitle = 'Storyfi') {
       this._cleanup()
       this.isLoading = true
       this.loadError = null
@@ -316,6 +335,7 @@ export const usePlaybackStore = defineStore('playback', {
 
       try {
         // AudioContext must be created (or resumed) inside a user gesture handler.
+        // Used only for decodeAudioData (waveform) and browser TTS clock.
         if (!_audioCtx || _audioCtx.state === 'closed') {
           _audioCtx = new AudioContext()
         } else if (_audioCtx.state === 'suspended') {
@@ -323,6 +343,7 @@ export const usePlaybackStore = defineStore('playback', {
         }
 
         _buffers = new Array(groups.length).fill(null)
+        _blobs   = new Array(groups.length).fill(null)
         const offsets = []
         let ms = 0
 
@@ -349,7 +370,8 @@ export const usePlaybackStore = defineStore('playback', {
                     setTimeout(() => rej(new Error('decodeAudioData timeout')), 10_000)
                   ),
                 ])
-                _buffers[i] = audioBuf
+                _blobs[i]   = blob      // kept for <audio> element playback
+                _buffers[i] = audioBuf  // kept for waveform only
                 ms += audioBuf.duration * 1000
                 hasAudio = true
               }
@@ -374,6 +396,7 @@ export const usePlaybackStore = defineStore('playback', {
         _waveformData = buildWaveformData(_buffers, WAVEFORM_BARS)
         this.waveformVersion++
 
+        this._setupMediaSession(projectTitle)
         this._startGroup(startGroupIdx)
       } catch (err) {
         this.isLoading = false
@@ -387,23 +410,27 @@ export const usePlaybackStore = defineStore('playback', {
     pause() {
       if (!this.isPlaying || this.isPaused) return
 
-      // For browser TTS: speechSynthesis.pause() is unreliable — cancel immediately
-      // and record where we are so resume() can restart from the same sentence.
       const buf = _buffers[this.currentGroupIdx]
       if (buf?._browserLive && 'speechSynthesis' in window) {
-        // Find the sentence index we're currently on
+        // Browser TTS: speechSynthesis.pause() is unreliable — cancel immediately
+        // and record where we are so resume() can restart from the same sentence.
         const group = buf.group
         const sentences = group.sentences ?? []
         const si = sentences.findIndex(s => s.id === this.currentSentenceId)
         _browserPausedGroupIdx    = this.currentGroupIdx
         _browserPausedSentenceIdx = Math.max(0, si)
         speechSynthesis.cancel()
+        _audioCtx?.suspend()
+      } else {
+        // Audio element pause — no need to suspend AudioContext
+        _audioEl?.pause()
       }
 
-      _audioCtx?.suspend()
       this._stopRaf()
       this.isPlaying = false
       this.isPaused = true
+      this._releaseWakeLock()
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
     },
 
     resume() {
@@ -416,26 +443,37 @@ export const usePlaybackStore = defineStore('playback', {
         _browserPausedGroupIdx    = -1
         _browserPausedSentenceIdx = -1
         this.isPaused = false
-        // _startGroup re-enters the browser TTS loop from the beginning of the group;
-        // we manually offset si so it starts at the right sentence.
-        // Simplest: temporarily splice sentences so speakNext starts at si.
         const buf = _buffers[gi]
         if (buf?._browserLive) {
           const group = buf.group
           const allSentences = group.sentences ?? []
-          // Temporarily replace sentences with the tail starting at si
           group.sentences = allSentences.slice(si)
           this._startGroup(gi)
-          // Restore after one tick so generation/export aren't affected
           setTimeout(() => { group.sentences = allSentences }, 0)
           return
         }
       }
 
+      // Audio element path — used for all normal (non-browser-TTS) playback
+      if (_audioEl && _audioBlobUrl) {
+        const gi = this.currentGroupIdx
+        _audioEl.onended = () => { if (this.isPlaying) this._startGroup(gi + 1) }
+        _audioCtx?.resume()
+        _audioEl.play().catch(e => console.warn('[playback] resume play() failed:', e))
+        this.isPaused  = false
+        this.isPlaying = true
+        this._startRaf()
+        this._acquireWakeLock()
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+        return
+      }
+
+      // Fallback (browser TTS fall-through or edge cases)
       _audioCtx?.resume()
+      this.isPaused  = false
       this.isPlaying = true
-      this.isPaused = false
       this._startRaf()
+      this._acquireWakeLock()
     },
 
     togglePlayPause() {
@@ -496,8 +534,19 @@ export const usePlaybackStore = defineStore('playback', {
         this._stopSourceNode()
         this.currentMs       = ms
         this.currentGroupIdx = offset.groupIdx
-        _startedAtCtx        = (_audioCtx?.currentTime ?? 0) - offsetInGroup / 1000
         _segmentOffsetMs     = offset.startMs
+        _startedAtCtx        = (_audioCtx?.currentTime ?? 0) - offsetInGroup / 1000
+
+        // Pre-position audio element so resume() starts at the seeked offset
+        const seekBlob = _blobs[offset.groupIdx]
+        if (seekBlob) {
+          if (!_audioEl) _audioEl = new Audio()
+          if (_audioBlobUrl) { URL.revokeObjectURL(_audioBlobUrl); _audioBlobUrl = null }
+          _audioBlobUrl = URL.createObjectURL(seekBlob)
+          _audioEl.src = _audioBlobUrl
+          _audioEl.currentTime = offsetInGroup / 1000
+        }
+
         // Update browser TTS resume position so Play restarts from the seeked sentence
         const pausedBuf = _buffers[offset.groupIdx]
         if (pausedBuf?._browserLive) {
@@ -612,33 +661,46 @@ export const usePlaybackStore = defineStore('playback', {
         return
       }
 
-      // ── Normal AudioBuffer playback ────────────────────────────────────────
+      // ── Audio element playback (iOS background-safe) ──────────────────────
+      // _buffers[] holds the decoded AudioBuffer for waveform only; actual
+      // playback goes through an <audio> element so iOS continues audio when
+      // the screen locks.
+      const blob = _blobs[groupIdx]
+      if (!blob) {
+        this._startGroup(groupIdx + 1)
+        return
+      }
+
       const offsetSec = Math.max(0, offsetMs / 1000)
-      const src = _audioCtx.createBufferSource()
-      src.buffer = buf
-      src.connect(_audioCtx.destination)
-      src.onended = () => {
+      if (!_audioEl) _audioEl = new Audio()
+      if (_audioBlobUrl) { URL.revokeObjectURL(_audioBlobUrl); _audioBlobUrl = null }
+      _audioBlobUrl = URL.createObjectURL(blob)
+      _audioEl.src = _audioBlobUrl
+      _audioEl.currentTime = offsetSec
+      _audioEl.onended = () => {
         if (this.isPlaying) this._startGroup(groupIdx + 1)
       }
-      _source = src
-      _startedAtCtx = _audioCtx.currentTime - offsetSec
-      _segmentOffsetMs = this.groupOffsets[groupIdx]?.startMs ?? 0
+      _segmentOffsetMs     = this.groupOffsets[groupIdx]?.startMs ?? 0
       this.currentGroupIdx = groupIdx
-      this.isPlaying = true
-      this.isPaused = false
-      src.start(0, offsetSec)
+      this.isPlaying       = true
+      this.isPaused        = false
+      _audioEl.play().catch(e => console.warn('[playback] play() failed:', e))
       this._startRaf()
+      this._acquireWakeLock()
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
     },
 
     _stopSourceNode() {
       if ('speechSynthesis' in window) speechSynthesis.cancel()
+      _browserGeneration++  // invalidate any in-flight speakNext closures immediately
+
+      if (_audioEl) {
+        _audioEl.onended = null
+        _audioEl.pause()
+      }
+
       if (_source) {
-        try {
-          _source.onended = null // prevent chaining
-          _source.stop()
-        } catch (_) {
-          // stop() throws if source hasn't started yet — safe to ignore
-        }
+        try { _source.onended = null; _source.stop() } catch (_) {}
         _source = null
       }
     },
@@ -650,11 +712,17 @@ export const usePlaybackStore = defineStore('playback', {
       this.currentGroupIdx = -1
       this.currentMs = this.totalMs // show full duration at end
       _editorRef?.clearHighlight?.()
+      this._releaseWakeLock()
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
     },
 
     _cleanup() {
-      this._stopSourceNode()
+      this._stopSourceNode()  // also increments _browserGeneration
       this._stopRaf()
+
+      if (_audioBlobUrl) { URL.revokeObjectURL(_audioBlobUrl); _audioBlobUrl = null }
+      _blobs = []
+
       this.isPlaying = false
       this.isPaused = false
       this.currentGroupIdx = -1
@@ -663,7 +731,10 @@ export const usePlaybackStore = defineStore('playback', {
       _waveformData = null
       _browserPausedGroupIdx    = -1
       _browserPausedSentenceIdx = -1
-      _browserGeneration++  // invalidate any in-flight speakNext closures
+      _lastPositionStateMs      = -Infinity
+
+      this._releaseWakeLock()
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
     },
 
     // ── RAF loop ──────────────────────────────────────────────────────────────
@@ -671,10 +742,29 @@ export const usePlaybackStore = defineStore('playback', {
     _startRaf() {
       this._stopRaf()
       const tick = () => {
-        if (!this.isPlaying || !_audioCtx) return
-        // Compute master timeline position from AudioContext clock (drift-free)
-        const elapsedSec = _audioCtx.currentTime - _startedAtCtx
-        this.currentMs = _segmentOffsetMs + elapsedSec * 1000
+        if (!this.isPlaying) return
+
+        if (_audioEl && !_audioEl.paused && !_audioEl.ended) {
+          // Audio element path — currentTime continues advancing while screen is off
+          this.currentMs = _segmentOffsetMs + _audioEl.currentTime * 1000
+        } else if (_audioCtx) {
+          // Browser TTS fallback — use AudioContext clock
+          const elapsedSec = _audioCtx.currentTime - _startedAtCtx
+          this.currentMs = _segmentOffsetMs + elapsedSec * 1000
+        }
+
+        // Push position to lock screen seek bar (throttled to ~1 s)
+        if (this.currentMs - _lastPositionStateMs > 1000 && 'mediaSession' in navigator && this.totalMs > 0) {
+          _lastPositionStateMs = this.currentMs
+          try {
+            navigator.mediaSession.setPositionState({
+              duration:     this.totalMs / 1000,
+              playbackRate: 1.0,
+              position:     Math.min(this.currentMs / 1000, this.totalMs / 1000),
+            })
+          } catch (_) {}
+        }
+
         this._syncHighlight()
         _rafId = requestAnimationFrame(tick)
       }
@@ -749,6 +839,65 @@ export const usePlaybackStore = defineStore('playback', {
       if (sentence.editorFrom != null) {
         _editorRef.highlightSentence?.(sentence.editorFrom, sentence.editorTo)
       }
+    },
+
+    // ── Wake Lock ─────────────────────────────────────────────────────────────
+
+    async _acquireWakeLock() {
+      if (!('wakeLock' in navigator) || _wakeLock) return
+      try {
+        _wakeLock = await navigator.wakeLock.request('screen')
+        // Re-acquire automatically if the browser releases it while still playing
+        _wakeLock.addEventListener('release', () => {
+          _wakeLock = null
+          if (this.isPlaying && document.visibilityState === 'visible') {
+            this._acquireWakeLock()
+          }
+        })
+      } catch (_) {
+        // Permission denied or feature unavailable — silent fail
+      }
+    },
+
+    _releaseWakeLock() {
+      if (_wakeLock) {
+        _wakeLock.release().catch(() => {})
+        _wakeLock = null
+      }
+    },
+
+    // ── MediaSession (lock screen controls) ──────────────────────────────────
+
+    _setupMediaSession(title) {
+      if (!('mediaSession' in navigator)) return
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title:  title || 'Storyfi',
+        artist: 'Storyfi',
+      })
+      navigator.mediaSession.setActionHandler('play',  () => {
+        if (this.isPaused) this.resume()
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (this.isPlaying) this.pause()
+      })
+      navigator.mediaSession.setActionHandler('stop',  () => this.stop())
+      navigator.mediaSession.setActionHandler('seekto', ({ seekTime }) => {
+        if (seekTime != null) this.seekToMs(seekTime * 1000)
+      })
+      navigator.mediaSession.setActionHandler('seekbackward', ({ seekOffset }) => {
+        this.seekToMs(Math.max(0, this.currentMs - (seekOffset ?? 10) * 1000))
+      })
+      navigator.mediaSession.setActionHandler('seekforward', ({ seekOffset }) => {
+        this.seekToMs(Math.min(this.totalMs, this.currentMs + (seekOffset ?? 10) * 1000))
+      })
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        const prev = this.currentGroupIdx - 1
+        if (prev >= 0) this.seekToGroup(prev)
+      })
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        const next = this.currentGroupIdx + 1
+        if (next < this.groupOffsets.length) this.seekToGroup(next)
+      })
     },
   },
 })
