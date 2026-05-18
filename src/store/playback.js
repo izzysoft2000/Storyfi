@@ -59,6 +59,32 @@ let _wakeLock = null
 let _lastPositionStateMs = -Infinity
 
 /**
+ * Cached blob URL for a 1-second silent WAV used to unlock the iOS audio
+ * session synchronously in the user gesture. Created once, never revoked.
+ */
+let _silentBlobUrl = null
+
+/**
+ * Build (once) a 1 s 22 050 Hz mono 16-bit silent WAV as a blob URL.
+ * The generated blob is ~44 KB — acceptable as a persistent session resource.
+ */
+function getSilentBlobUrl() {
+  if (_silentBlobUrl) return _silentBlobUrl
+  const rate = 22050, n = rate              // 1 second
+  const ab   = new ArrayBuffer(44 + n * 2)
+  const v    = new DataView(ab)
+  const w    = (s, o) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)))
+  w('RIFF', 0);  v.setUint32(4, 36 + n * 2, true)
+  w('WAVE', 8);  w('fmt ', 12); v.setUint32(16, 16, true)
+  v.setUint16(20, 1, true);  v.setUint16(22, 1, true)      // PCM, mono
+  v.setUint32(24, rate, true);  v.setUint32(28, rate * 2, true)
+  v.setUint16(32, 2, true);  v.setUint16(34, 16, true)
+  w('data', 36); v.setUint32(40, n * 2, true)
+  // Remaining bytes are already 0 — silence
+  return (_silentBlobUrl = URL.createObjectURL(new Blob([ab], { type: 'audio/wav' })))
+}
+
+/**
  * Cache of computed word→editor positions.
  * Map<sentenceId, WordPosition[] | false>
  * `false` means "computed but nothing found" — avoids re-computing on every frame.
@@ -331,13 +357,15 @@ export const usePlaybackStore = defineStore('playback', {
       this.loadError = null
 
       // ── iOS audio session unlock ───────────────────────────────────────────
-      // iOS expires the user-gesture context at the first `await`. Calling
-      // play() synchronously here — before any async work — locks in background-
-      // audio permission for this element. A silent WAV data URI ensures iOS
-      // accepts the call rather than rejecting it for a missing/revoked src.
-      // The real blob URL is loaded just before actual playback begins.
+      // iOS expires the user-gesture context at the first `await`. We call
+      // play() synchronously here with a LOOPING 1-second silent WAV so the
+      // audio session stays alive for the entire async decode phase (which can
+      // take several seconds for long chapters). _stopSourceNode() does NOT
+      // pause the element, so the loop persists until _startGroupAtOffset()
+      // replaces the src with the real blob URL, which automatically stops it.
       if (!_audioEl) _audioEl = new Audio()
-      _audioEl.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
+      _audioEl.loop = true
+      _audioEl.src  = getSilentBlobUrl()
       _audioEl.play().catch(() => {})
 
       _groups = groups
@@ -551,6 +579,7 @@ export const usePlaybackStore = defineStore('playback', {
         const seekBlob = _blobs[offset.groupIdx]
         if (seekBlob) {
           if (!_audioEl) _audioEl = new Audio()
+          _audioEl.loop = false
           if (_audioBlobUrl) { URL.revokeObjectURL(_audioBlobUrl); _audioBlobUrl = null }
           _audioBlobUrl = URL.createObjectURL(seekBlob)
           _audioEl.src = _audioBlobUrl
@@ -683,6 +712,7 @@ export const usePlaybackStore = defineStore('playback', {
 
       const offsetSec = Math.max(0, offsetMs / 1000)
       if (!_audioEl) _audioEl = new Audio()
+      _audioEl.loop = false  // cancel the silence loop started during unlock
       if (_audioBlobUrl) { URL.revokeObjectURL(_audioBlobUrl); _audioBlobUrl = null }
       _audioBlobUrl = URL.createObjectURL(blob)
       _audioEl.src = _audioBlobUrl
@@ -706,7 +736,9 @@ export const usePlaybackStore = defineStore('playback', {
 
       if (_audioEl) {
         _audioEl.onended = null
-        _audioEl.pause()
+        // Do NOT pause here — the caller is about to set a new src, which
+        // automatically stops current audio while keeping the iOS audio session
+        // alive. Pausing would kill the session between group transitions.
       }
 
       if (_source) {
@@ -717,6 +749,7 @@ export const usePlaybackStore = defineStore('playback', {
 
     _onPlaybackEnded() {
       this._stopRaf()
+      _audioEl?.pause()  // explicit stop — _stopSourceNode() no longer pauses
       this.isPlaying = false
       this.isPaused = false
       this.currentGroupIdx = -1
@@ -729,6 +762,7 @@ export const usePlaybackStore = defineStore('playback', {
     _cleanup() {
       this._stopSourceNode()  // also increments _browserGeneration
       this._stopRaf()
+      _audioEl?.pause()  // explicit stop — _stopSourceNode() no longer pauses
 
       if (_audioBlobUrl) { URL.revokeObjectURL(_audioBlobUrl); _audioBlobUrl = null }
       _blobs = []
