@@ -457,6 +457,9 @@ export const usePlaybackStore = defineStore('playback', {
         const si = sentences.findIndex(s => s.id === this.currentSentenceId)
         _browserPausedGroupIdx    = this.currentGroupIdx
         _browserPausedSentenceIdx = Math.max(0, si)
+        // Increment generation BEFORE cancel() so the speakNext closure sees a
+        // stale generation and does not advance to the next sentence on onend/onerror.
+        _browserGeneration++
         speechSynthesis.cancel()
         _audioCtx?.suspend()
       } else {
