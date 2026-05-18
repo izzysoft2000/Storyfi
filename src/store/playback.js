@@ -567,6 +567,31 @@ export const usePlaybackStore = defineStore('playback', {
 
       if (this.isPlaying) {
         if (_audioCtx?.state === 'suspended') _audioCtx.resume()
+
+        // Same group + audio element already loaded → seek directly without reloading src.
+        // Reloading src on iOS resets currentTime to 0 before the canplay event fires,
+        // which is why the seek appeared to restart the segment.
+        if (
+          offset.groupIdx === this.currentGroupIdx &&
+          _audioEl &&
+          _audioBlobUrl &&
+          !_audioEl.ended
+        ) {
+          _segmentOffsetMs = offset.startMs
+          _audioEl.currentTime = offsetInGroup / 1000
+          this.currentMs = ms
+          _lastPositionStateMs = -Infinity  // force immediate position state push
+          if ('mediaSession' in navigator && this.totalMs > 0) {
+            navigator.mediaSession.setPositionState({
+              duration:     this.totalMs / 1000,
+              playbackRate: 1,
+              position:     Math.min(ms / 1000, this.totalMs / 1000),
+            })
+          }
+          this._syncHighlight()
+          return
+        }
+
         this._startGroupAtOffset(offset.groupIdx, offsetInGroup)
       } else if (this.isPaused) {
         this._stopSourceNode()
