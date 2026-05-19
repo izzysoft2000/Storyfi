@@ -89,7 +89,7 @@
               <span class="m-mode-toggle__opt">☝</span>
             </button>
             <div class="m-tool-divider" />
-            <button class="m-tool-btn" title="Import Markdown" @click="onImport">↑ Import</button>
+            <button class="m-tool-btn" title="Import Markdown" @click="onImport"><svg class="tb-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 1L13 1L17 5L17 19L4 19Z" fill="#ccc" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/><path d="M13 1L17 5L13 5Z" fill="#aaa" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/><line x1="6" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" opacity="0.45"/><line x1="6" y1="17" x2="12" y2="17" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" opacity="0.45"/><path d="M2 9.5L6.5 6.5L6.5 8L15.5 8L15.5 11L6.5 11L6.5 12.5Z" fill="#fbbf24" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/></svg> Import</button>
             <div class="m-tool-divider" />
             <button class="m-tool-btn" :class="{ 'm-tool-btn--disabled': !mobileSelection.hasSelection }" @click="onBold"><b>B</b></button>
             <button class="m-tool-btn" :class="{ 'm-tool-btn--disabled': !mobileSelection.hasSelection }" @click="onItalic"><i>I</i></button>
@@ -259,14 +259,12 @@
                   class="panel-tb-btn"
                   :disabled="!gen.groups.some(g => g.stitchStatus === 'ready')"
                   @click="onExport"
-                >↓ Export</button>
+                ><svg class="tb-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 1L13 1L17 5L17 19L4 19Z" fill="#ccc" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/><path d="M13 1L17 5L13 5Z" fill="#aaa" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/><line x1="6" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" opacity="0.45"/><line x1="6" y1="17" x2="12" y2="17" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" opacity="0.45"/><path d="M18 9.5L13.5 6.5L13.5 8L4.5 8L4.5 11L13.5 11L13.5 12.5Z" fill="#fbbf24" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/></svg> Export</button>
               </template>
 
               <!-- Editor toolbar in panel bar -->
               <template v-if="panelId === 'editor'" #bar-right>
-                <button class="panel-tb-btn" title="Import Markdown" @click="onImport">
-                  ↑ Import
-                </button>
+                <button class="panel-tb-btn" title="Import Markdown" @click="onImport"><svg class="tb-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 1L13 1L17 5L17 19L4 19Z" fill="#ccc" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/><path d="M13 1L17 5L13 5Z" fill="#aaa" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/><line x1="6" y1="14" x2="15" y2="14" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" opacity="0.45"/><line x1="6" y1="17" x2="12" y2="17" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" opacity="0.45"/><path d="M2 9.5L6.5 6.5L6.5 8L15.5 8L15.5 11L6.5 11L6.5 12.5Z" fill="#fbbf24" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/></svg> Import</button>
                 <div class="panel-tb-divider" />
                 <button
                   class="panel-tb-btn panel-tb-btn--fmt"
@@ -1097,11 +1095,12 @@ function goLibrary() { emit('go-library') }
 }
 
 /* ─── Editor panel toolbar buttons (in DockablePanel bar-right slot) ─────────── */
+.tb-icon { width: 14px; height: 14px; vertical-align: -2px; flex-shrink: 0 }
 .panel-tb-btn {
   background: none; border: 1px solid transparent; border-radius: 4px;
   color: var(--color-text-muted); font-size: 11px; font-family: var(--font-ui);
   padding: 2px 7px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
-  line-height: 1.4;
+  line-height: 1.4; display: inline-flex; align-items: center; gap: 4px;
 }
 .panel-tb-btn:hover { background: var(--color-border); color: var(--color-text) }
 .panel-tb-btn.active { background: rgba(255,142,110,0.18); border-color: var(--color-accent); color: var(--color-accent) }
@@ -1234,9 +1233,10 @@ function goLibrary() { emit('go-library') }
 .m-panel-badge { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); margin-left: 6px; }
 .m-tool-btn {
   all: unset; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-  padding: 5px 9px; border-radius: 6px; font-family: var(--font-ui); font-size: 13px;
+  gap: 4px; padding: 5px 9px; border-radius: 6px; font-family: var(--font-ui); font-size: 13px;
   color: var(--color-text-muted); flex-shrink: 0; transition: background 0.12s, color 0.12s; white-space: nowrap;
 }
+.m-tool-btn .tb-icon { width: 15px; height: 15px; vertical-align: unset }
 .m-tool-btn:active        { background: rgba(255,142,110,0.18); color: var(--color-text); }
 .m-tool-btn--disabled     { opacity: 0.3; cursor: default; pointer-events: none; }
 .m-tool-btn--remove       { color: var(--color-error) !important; flex-shrink: 0; }
