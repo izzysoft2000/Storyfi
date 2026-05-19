@@ -752,6 +752,9 @@ export const usePlaybackStore = defineStore('playback', {
       this.currentGroupIdx = groupIdx
       this.isPlaying       = true
       this.isPaused        = false
+      // Anchor the AudioContext clock so it agrees with the audio element position.
+      // Used as fallback if _audioEl.currentTime is unavailable (brief iOS transitions).
+      _startedAtCtx = (_audioCtx?.currentTime ?? 0) - offsetSec
       _audioEl.play().catch(e => console.warn('[playback] play() failed:', e))
       this._startRaf()
       this._acquireWakeLock()
@@ -816,13 +819,15 @@ export const usePlaybackStore = defineStore('playback', {
       const tick = () => {
         if (!this.isPlaying) return
 
-        if (_audioEl && !_audioEl.paused && !_audioEl.ended) {
-          // Audio element path — currentTime continues advancing while screen is off
+        if (_audioEl && _audioBlobUrl) {
+          // Real group audio loaded — read currentTime directly.
+          // Do NOT gate on paused/ended: iOS briefly marks the element paused
+          // during load transitions, which would stall the progress bar.
           this.currentMs = _segmentOffsetMs + _audioEl.currentTime * 1000
         } else if (_audioCtx) {
-          // Browser TTS fallback — use AudioContext clock
+          // Browser TTS (no blob URL) — use AudioContext clock anchored by speakNext
           const elapsedSec = _audioCtx.currentTime - _startedAtCtx
-          this.currentMs = _segmentOffsetMs + elapsedSec * 1000
+          this.currentMs = _segmentOffsetMs + Math.max(0, elapsedSec) * 1000
         }
 
         // Push position to lock screen seek bar (throttled to ~1 s)
