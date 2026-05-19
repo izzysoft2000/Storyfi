@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v2.1**
+Current version: **v2.2**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -19,8 +19,8 @@ npm run dev
 Open [http://localhost:5173](http://localhost:5173)
 
 ```bash
-npm run build      # production build → /var/www/storyfi.izzysoft.com
-npm run preview    # preview production build locally
+npm run build    # production build → ./dist
+npm run preview  # preview production build locally
 ```
 
 ---
@@ -28,10 +28,10 @@ npm run preview    # preview production build locally
 ## What It Does
 
 1. **Import** a Markdown script (or type directly in the editor)
-2. **Tag** text spans with voice roles (NARRATOR, MAR-VELL, etc.) — manually via the BubbleMenu, or automatically via ⚡ Auto-tag from script
+2. **Tag** text spans with voice roles (NARRATOR, MAR-VELL, etc.) via the BubbleMenu, or automatically via ⚡ Auto-tag
 3. **Assign voices** — choose a TTS provider and voice for each role in the Cast panel
-4. **Generate** — each tagged span is sent to the TTS engine, audio is cached in IndexedDB
-5. **Play** — timeline playback with waveform visualisation and sentence-level highlighting + follow mode
+4. **Generate** — each tagged paragraph is sent to the TTS engine, audio cached in IndexedDB
+5. **Play** — timeline playback with waveform visualisation and sentence-level highlight sync + follow mode
 6. **Export** — stitched gapless MP3 saved to your chosen output folder via File System Access API
 
 ---
@@ -45,34 +45,13 @@ npm run preview    # preview production build locally
 | Editor | Tiptap v2 — custom `VoiceTag` Mark + `SegmentBreak` Node |
 | State | Pinia — `project.js`, `generation.js`, `playback.js` |
 | Persistence | IndexedDB via `idb`, File System Access API for MP3 output |
-| Audio | Web Audio API + `lamejs` (gapless 128kbps CBR MP3 stitching) |
+| Audio | `<audio>` element (iOS background-safe) + Web Audio API for waveform/decode |
+| Encoding | `lamejs` — gapless 128kbps CBR MP3 stitching |
 | Drag & drop | `vuedraggable@next` (cast role reordering) |
-| Hosting | Cloudflare Pages (storyfi.izzysoft.workers.dev) |
-| VPS | Debian 12 + Nginx (storyfi.izzysoft.com) — deploy server |
-| Fonts | Playfair Display · DM Sans · JetBrains Mono |
+| Hosting | Cloudflare Pages |
+| Fonts | Fraunces · Inter · JetBrains Mono |
 
-**TTS Providers supported:** MiniMax · OpenAI · ElevenLabs · Browser SpeechSynthesis (no API key)
-
----
-
-## Deploy Pipeline
-
-Changes are deployed via a one-click HTML deploy page generated at the end of each dev session.
-
-| Component | Detail |
-|---|---|
-| Deploy server | Go binary at `/opt/storyfi-deploy/storyfi-deploy` on VPS |
-| Endpoint | `POST https://storyfi.izzysoft.com/deploy-api/deploy` |
-| Health | `GET https://storyfi.izzysoft.com/deploy-api/health` |
-| Auth | Bearer token in `Authorization` header |
-| Flow | `git pull --rebase` → write files → `npm run build` → `git push` |
-| Service | `systemctl status storyfi-deploy` |
-
-**End-of-session workflow:**
-1. Claude generates `storyfi-deploy.html` with all changed files baked in as base64
-2. Open in browser → click Deploy
-3. VPS writes files, builds, pushes to GitHub
-4. Site goes live in ~30 seconds
+**TTS Providers:** MiniMax · OpenAI · ElevenLabs · Browser SpeechSynthesis (no API key)
 
 ---
 
@@ -82,6 +61,7 @@ Changes are deployed via a one-click HTML deploy page generated at the end of ea
 storyfi/
 ├── index.html
 ├── vite.config.js
+├── wrangler.jsonc
 ├── public/
 │   ├── manifest.json
 │   └── icons/
@@ -89,7 +69,7 @@ storyfi/
     ├── main.js
     ├── App.vue
     ├── views/
-    │   ├── LibraryView.vue        — Project grid, version number (top-right)
+    │   ├── LibraryView.vue        — Project grid, version number
     │   └── EditorView.vue         — Desktop dockable workspace + Mobile layout
     ├── panels/
     │   ├── CastPanel.vue          — Role CRUD, voice picker, Auto-tag button
@@ -105,9 +85,9 @@ storyfi/
     │   ├── db.js                  — IndexedDB schema
     │   ├── project.js             — Active project state, cast mutations
     │   ├── generation.js          — Group build, TTS queue, stitch, sentence ops
-    │   └── playback.js            — Transport, RAF loop, waveform, highlight sync, follow mode
+    │   └── playback.js            — Transport, RAF loop, waveform, highlight sync
     ├── composables/
-    │   ├── usePanelLayout.js
+    │   ├── usePanelLayout.js      — Panel layout + useTheme()
     │   ├── usePanelDrag.js
     │   ├── useMobileLayout.js
     │   └── useOnlineStatus.js
@@ -144,88 +124,72 @@ storyfi/
 
 ### Editor
 - Tiptap v2 rich text editor with Markdown import
-- **VoiceTag** mark — highlights text with role colour
+- **VoiceTag** mark — highlights text with role colour (pill style: left-border + bg tint)
 - **SegmentBreak** node — manual split point (§)
 - BubbleMenu: role chips + ↗ Jump to Playlist + ✕ Remove
 - Table support (`@tiptap/extension-table` family, pinned to 2.27.2)
 
 ### Auto-Tagging
 - Scans document for `[LABEL]` patterns
-- Case-insensitive match against cast roles
-- Label-match fallback when roleIds are stale (new UUIDs after cast rebuild)
-- Table cells excluded from tagging
+- Section-ownership model — `pendingRole` carries across paragraphs until next label
+- Creates missing cast members from unmatched labels
+- Italic text (stage directions) skipped; table cells excluded
 - Reports unmatched labels as a toast
 
 ### Cast Panel
 - Up to 10 roles per project
 - Per-role: colour, label, TTS provider, voice picker with preview
-- Language + gender filter pills (scrollable, max 3.5 rows)
-- New character inherits provider from last cast member
-- Drag-to-reorder roles
+- Language + gender filter pills; drag-to-reorder roles
+- Per-role MiniMax model selector (all 8 models) + emotion, speed, pitch, volume
 
 ### Generation Pipeline
-- Paragraph = segment; consecutive same-role paragraphs grouped
-- Browser TTS fast-path (no API key, no blob, live SpeechSynthesis)
+- Paragraph = segment; consecutive same-role paragraphs grouped under one playlist header
+- Browser TTS fast-path (no API key, live SpeechSynthesis, no MP3 storage)
 - Sentence-level checkboxes — Re-Generate or Delete individual sentences
-- `regenerateSentences(ids)` — resets only selected, re-stitches group
-- `deleteSentences(ids)` — removes sentences + untags editor ranges
-- Orphaned role guard with label-match fallback
+- `regenerateSentences(ids)` / `deleteSentences(ids)` — untags editor ranges on delete
 
 ### Playback
-- Web Audio API + SpeechSynthesis for browser groups
-- Waveform canvas (`ctx.setTransform` — no scale drift)
-- **seekToMs** — 3-way: playing (seek+play), paused (reposition only), stopped (set position)
-- Cold scrub: loads from nearest group
-- **Follow mode** — amber toggle in player bar; auto-expands group, scrolls active sentence
-- Sentence-level highlight sync (`sentence-row--active`: amber left border)
-- Browser TTS: `currentSentenceId` set per utterance for accurate highlight
+- **`<audio>` element** for all non-browser-TTS groups — continues playing when iOS screen locks
+- **Wake Lock API** — prevents screen from dimming while audio plays (iOS 16.4+)
+- **MediaSession API** — lock screen Now Playing widget with play/pause/seek controls
+- Looping silent WAV trick unlocks iOS audio session synchronously in the user gesture
+- Waveform canvas (DPR-aware, light/dark colour-aware, `ctx.setTransform`)
+- `seekToMs` — 3-way: playing (seek+play), paused (reposition only), stopped (set position)
+- Follow mode — auto-expands group, scrolls active sentence into view
+- Browser TTS: `currentSentenceId` set per utterance; `_seekBrowserTts` skips by sentence
 
 ### Workspace (Desktop)
-- 3 dockable panels: Cast | Editor | Playlist
-- Generate + Export buttons in Playlist panel drag bar
-- Selection header: (N) count, total time, ↺ Re-Generate, ✕ Delete
-- ↗ Jump to Playlist button in BubbleMenu
+- 3 dockable panels: Cast | Editor | Playlist; drag to reorder/split/merge columns
+- Column resize handles with left-column snapshot system
+- Status bar: StorageBar + Saved dot + Online dot
 
 ### Mobile UI
 - Full-screen panels with bottom tab bar: Cast | Edit | Play
-- Follow mode auto-expands and scrolls on mobile too
+- Edit/Tag mode toggle; playback locks to Tag mode
+- `isSwitching` guard prevents scroll conflicts during panel transitions
 
 ---
 
 ## Architecture Notes
 
-### Timing write-back (critical)
-`maybeStitchGroup` writes `startMs`/`endMs` to BOTH `sentences.value[id]` (flat lookup)
-AND `group.sentences[i]` (array objects). `_syncHighlight` reads from `group.sentences[i]`.
-Both must be kept in sync or highlight jumps to the last sentence.
+### iOS Background Audio (critical)
+`loadAndPlay()` synchronously calls `_audioEl.play()` with a looping 1-second silent WAV before any `await`. This keeps the iOS audio session alive during async `decodeAudioData()`. `_stopSourceNode()` never calls `pause()` — only `_cleanup()` and `_onPlaybackEnded()` do. Changing `_audioEl.src` to the real blob URL stops the silent loop without closing the session.
 
-### Browser TTS highlight
-`speakNext()` sets `currentSentenceId = sentence.id` and re-anchors `_startedAtCtx`
-at each utterance boundary. No time-based guessing needed.
+### Timing write-back (critical)
+`maybeStitchGroup` writes `startMs`/`endMs` to BOTH `sentences.value[id]` (flat lookup) AND `group.sentences[i]` (array objects). `_syncHighlight` reads from `group.sentences[i]`. Both must be in sync or highlight jumps to the last sentence.
+
+### Web Audio objects — never in Pinia reactive state
+`AudioContext`, `AudioBuffer[]`, `HTMLAudioElement` live in module-level `let` vars in `playback.js`. Vue Proxy-wrapping breaks `suspended` state and `onended` callbacks.
 
 ### onAutoTag MUST be async
-`store.addRole()` reads from IndexedDB (async). `onAutoTag` must `await` every
-`addRole` call and `await nextTick()` before running `applyAutoTag`.
-Without this: "No [LABEL] patterns found" fires immediately after "Added N cast members".
+`store.addRole()` reads from IndexedDB (async). `onAutoTag` must `await` every `addRole` call and `await nextTick()` before running `applyAutoTag`. Without this: "No [LABEL] patterns found" fires immediately after "Added N cast members". **This fix gets lost easily — check first after any EditorView.vue edit.**
 
 ---
 
 ## Known Limitations / Backlog
 
-- Mobile: File System Access API not available on iOS
-- Google Drive integration (requires Cloudflare Worker proxy)
+- iOS: File System Access API unavailable — falls back to ZIP export
+- MiniMax API requires a CORS proxy for browser calls (Cloudflare Worker planned)
+- Google Drive integration (requires Worker for OAuth token exchange)
 - Scene/Act/Chapter hierarchy
-- Auto-scroll teleprompter during playback
-- Pause/resume mid-sentence not reliable for browser TTS (SpeechSynthesis limitation)
-
----
-
-## Development Notes
-
-See `SNAPSHOT.md` for full session-by-session implementation history, bug fixes, and architecture decisions. Start every Claude session by attaching `SNAPSHOT.md` + a zip of the latest source.
-
-**Session start ritual:**
-```bash
-cd /tmp && unzip -o /mnt/user-data/uploads/Storyfi_vX_X.zip -d /tmp/storyfi/
-```
-Extract ONCE. Work in place. Never re-extract individual files mid-session.
+- SRT/VTT subtitle export
