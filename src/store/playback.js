@@ -924,6 +924,47 @@ export const usePlaybackStore = defineStore('playback', {
       }
     },
 
+    /**
+     * Seek forward/backward by one sentence for browser TTS groups, which have
+     * no per-sentence timing so time-based seekToMs() can't position correctly.
+     * @param {number} delta  +1 = next sentence, -1 = previous sentence
+     * @returns {boolean}  true if handled (caller should skip seekToMs)
+     */
+    _seekBrowserTts(delta) {
+      if (!this.isPlaying && !this.isPaused) return false
+      const buf = _buffers[this.currentGroupIdx]
+      if (!buf?._browserLive) return false
+
+      const group     = buf.group
+      const sentences = group.sentences ?? []
+      const ci = sentences.findIndex(s => s.id === this.currentSentenceId)
+      const ni = (ci === -1 ? 0 : ci) + delta
+
+      if (delta > 0 && ni >= sentences.length) {
+        // Past last sentence → move to next group
+        if (this.isPlaying) this._startGroup(this.currentGroupIdx + 1)
+        return true
+      }
+
+      const targetIdx = Math.max(0, ni)
+
+      if (this.isPaused) {
+        // Update the resume anchor so Play resumes from the target sentence
+        _browserPausedGroupIdx    = this.currentGroupIdx
+        _browserPausedSentenceIdx = targetIdx
+        // Update currentSentenceId so the highlight reflects the new position
+        this.currentSentenceId = sentences[targetIdx]?.id ?? this.currentSentenceId
+        return true
+      }
+
+      // Playing — restart the group from the target sentence using the slice trick
+      const allSentences = group.sentences
+      group.sentences = allSentences.slice(targetIdx)
+      this._startGroup(this.currentGroupIdx)
+      setTimeout(() => { group.sentences = allSentences }, 0)
+      return true
+    },
+
     // ── Wake Lock ─────────────────────────────────────────────────────────────
 
     async _acquireWakeLock() {
@@ -968,9 +1009,11 @@ export const usePlaybackStore = defineStore('playback', {
         if (seekTime != null) this.seekToMs(seekTime * 1000)
       })
       navigator.mediaSession.setActionHandler('seekbackward', ({ seekOffset }) => {
+        if (this._seekBrowserTts(-1)) return
         this.seekToMs(Math.max(0, this.currentMs - (seekOffset ?? 10) * 1000))
       })
       navigator.mediaSession.setActionHandler('seekforward', ({ seekOffset }) => {
+        if (this._seekBrowserTts(1)) return
         this.seekToMs(Math.min(this.totalMs, this.currentMs + (seekOffset ?? 10) * 1000))
       })
       navigator.mediaSession.setActionHandler('previoustrack', () => {
