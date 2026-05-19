@@ -865,8 +865,19 @@ export const usePlaybackStore = defineStore('playback', {
       const group = _groups[this.currentGroupIdx]
       if (!group) return
 
-      const groupLocalMs = this.currentMs - offset.startMs
-      const sentence = findCurrentSentence(group, groupLocalMs)
+      // Browser TTS groups lack per-sentence startMs/endMs timing, so the
+      // time-based lookup always returns sentence 0. speakNext() already sets
+      // currentSentenceId correctly; use it directly for _browserLive groups.
+      const isBrowserLive = !!_buffers[this.currentGroupIdx]?._browserLive
+      let sentence
+      if (isBrowserLive) {
+        sentence = this.currentSentenceId
+          ? (group.sentences?.find(s => s.id === this.currentSentenceId) ?? null)
+          : (group.sentences?.[0] ?? null)
+      } else {
+        const groupLocalMs = this.currentMs - offset.startMs
+        sentence = findCurrentSentence(group, groupLocalMs)
+      }
 
       if (!sentence) {
         _editorRef.clearHighlight?.()
