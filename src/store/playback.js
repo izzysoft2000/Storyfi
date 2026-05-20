@@ -65,6 +65,24 @@ let _lastPositionStateMs = -Infinity
 let _silentBlobUrl = null
 
 /**
+ * Cached browser TTS voice list.
+ * speechSynthesis.getVoices() returns [] on the first synchronous call after
+ * a page load. ensureBrowserVoices() waits for voiceschanged if needed.
+ */
+let _browserVoices = []
+
+function ensureBrowserVoices() {
+  const voices = speechSynthesis.getVoices()
+  if (voices.length > 0) { _browserVoices = voices; return Promise.resolve() }
+  return new Promise(resolve => {
+    speechSynthesis.addEventListener('voiceschanged', () => {
+      _browserVoices = speechSynthesis.getVoices()
+      resolve()
+    }, { once: true })
+  })
+}
+
+/**
  * Build (once) a 1 s 22 050 Hz mono 16-bit silent WAV as a blob URL.
  * The generated blob is ~44 KB — acceptable as a persistent session resource.
  */
@@ -384,6 +402,12 @@ export const usePlaybackStore = defineStore('playback', {
         _blobs   = new Array(groups.length).fill(null)
         const offsets = []
         let ms = 0
+
+        // Pre-warm browser voice list so the first sentence uses the right voice.
+        // getVoices() returns [] on the first synchronous call; voiceschanged fires async.
+        if ('speechSynthesis' in window && groups.some(g => g.livePlayback)) {
+          await ensureBrowserVoices()
+        }
 
         for (let i = 0; i < groups.length; i++) {
           const group = groups[i]
@@ -716,7 +740,8 @@ export const usePlaybackStore = defineStore('playback', {
           const utt = new SpeechSynthesisUtterance(sentence.text)
           utt.rate = 1.0
           if (group._voiceURI) {
-            const v = speechSynthesis.getVoices().find(v => v.voiceURI === group._voiceURI)
+            const voices = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
+            const v = voices.find(v => v.voiceURI === group._voiceURI)
             if (v) utt.voice = v
           }
           utt.onend   = speakNext
