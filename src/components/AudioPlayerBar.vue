@@ -44,6 +44,9 @@
 
     </div>
 
+    <!-- TEMP DEBUG: voice assignment diagnostic -->
+    <div v-if="playback.debugMsg" style="font-size:10px;color:#f0f;padding:2px 8px;word-break:break-all;background:#111">{{ playback.debugMsg }}</div>
+
     <!-- ── Error banner ──────────────────────────────────────────────────── -->
     <div v-if="playback.loadError" class="player-error" :title="playback.loadError">
       <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">

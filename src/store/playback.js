@@ -322,6 +322,9 @@ export const usePlaybackStore = defineStore('playback', {
      * in _waveformData (non-reactive) to avoid Vue Proxy wrapping typed arrays.
      */
     waveformVersion: 0,
+
+    /** Temporary debug string shown in player bar for diagnosing voice issues */
+    debugMsg: '',
   }),
 
   // ─── Getters ───────────────────────────────────────────────────────────────
@@ -739,14 +742,14 @@ export const usePlaybackStore = defineStore('playback', {
 
           const utt = new SpeechSynthesisUtterance(sentence.text)
           utt.rate = 1.0
+          const siIdx = si - 1
           if (group._voiceURI) {
             const voices = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
             const v = voices.find(v => v.voiceURI === group._voiceURI)
-            console.log('[browserTTS] si=%d voiceURI=%s found=%s utt.voice before=%s', si - 1, group._voiceURI, v?.name, utt.voice?.name)
             if (v) utt.voice = v
-            console.log('[browserTTS] utt.voice after=%s', utt.voice?.name)
+            this.debugMsg = `s${siIdx}: uri="${group._voiceURI.slice(-20)}" found=${v ? v.name : 'NO'} set=${utt.voice ? utt.voice.name : 'NO'}`
           } else {
-            console.log('[browserTTS] si=%d no _voiceURI on group', si - 1)
+            this.debugMsg = `s${siIdx}: NO _voiceURI on group`
           }
           utt.onend   = speakNext
           utt.onerror = speakNext
