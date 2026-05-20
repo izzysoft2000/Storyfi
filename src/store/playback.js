@@ -772,18 +772,11 @@ export const usePlaybackStore = defineStore('playback', {
           utt.onerror = speakNext
           speechSynthesis.speak(utt)
         }
-        // Only cancel if the engine is actively speaking/pending; cancelling an idle
-        // engine puts iOS/Chrome into a reset state where utt.voice is ignored on the
-        // very next speak(). When nothing is queued we call speakNext() directly and
-        // the voice assignment is honoured. When we DO need to cancel (seek while
-        // playing), add a delay so the engine settles before the next speak().
-        const engineBusy = speechSynthesis.speaking || speechSynthesis.pending
-        if (engineBusy) {
-          speechSynthesis.cancel()
-          setTimeout(speakNext, 100)
-        } else {
-          speakNext()
-        }
+        // iOS requires speechSynthesis.cancel() before the first speak() to properly
+        // initialize the engine — without it speak() queues silently and onend never
+        // fires. Always cancel and wait a short delay before starting.
+        speechSynthesis.cancel()
+        setTimeout(speakNext, 150)
         return
       }
 
