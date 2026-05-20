@@ -742,7 +742,11 @@ export const usePlaybackStore = defineStore('playback', {
           if (group._voiceURI) {
             const voices = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
             const v = voices.find(v => v.voiceURI === group._voiceURI)
+            console.log('[browserTTS] si=%d voiceURI=%s found=%s utt.voice before=%s', si - 1, group._voiceURI, v?.name, utt.voice?.name)
             if (v) utt.voice = v
+            console.log('[browserTTS] utt.voice after=%s', utt.voice?.name)
+          } else {
+            console.log('[browserTTS] si=%d no _voiceURI on group', si - 1)
           }
           utt.onend   = speakNext
           utt.onerror = speakNext
