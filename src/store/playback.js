@@ -749,9 +749,23 @@ export const usePlaybackStore = defineStore('playback', {
           speechSynthesis.speak(utt)
         }
         speechSynthesis.cancel()
-        // Browsers (Chrome, iOS Safari) ignore utt.voice on the first speak() call
-        // made immediately after cancel(). A short delay lets the engine reset.
-        setTimeout(speakNext, 50)
+        // iOS/Chrome: utt.voice is silently ignored on the very first speak() after
+        // cancel(). Fix: prime the engine with a zero-volume utterance using the target
+        // voice; when its onend fires the engine has already locked onto the voice and
+        // will honour it for every subsequent speak() — including speakNext's first call.
+        setTimeout(() => {
+          const primer = new SpeechSynthesisUtterance('.')
+          primer.volume = 0
+          primer.rate   = 10
+          if (group._voiceURI) {
+            const vs = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
+            const v  = vs.find(v => v.voiceURI === group._voiceURI)
+            if (v) primer.voice = v
+          }
+          primer.onend   = speakNext
+          primer.onerror = speakNext
+          speechSynthesis.speak(primer)
+        }, 50)
         return
       }
 
