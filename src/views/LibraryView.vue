@@ -13,7 +13,16 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
-      <span class="app-version" title="Built: 2026-04-29 17:42 EDT">v2.2</span>
+      <button class="app-version" @click="showBuildInfo = true">v2.2</button>
+
+      <!-- Build info dialog -->
+      <div v-if="showBuildInfo" class="build-dialog-backdrop" @click.self="showBuildInfo = false">
+        <div class="build-dialog">
+          <p class="build-dialog-title">Storyfi v2.2</p>
+          <p class="build-dialog-date">Built {{ buildDateDisplay }}</p>
+          <button class="build-dialog-close" @click="showBuildInfo = false">OK</button>
+        </div>
+      </div>
       <button
         class="lib-theme-btn"
         :title="isDark ? 'Switch to Light mode' : 'Switch to Dark mode'"
@@ -167,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import StorageBar   from '@/components/StorageBar.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import Toast        from '@/components/Toast.vue'
@@ -224,6 +233,18 @@ onMounted(async () => {
 // but we store the event and call .prompt() ourselves on button click.
 
 const canInstallChrome  = ref(false)
+
+const showBuildInfo = ref(false)
+const buildDateDisplay = computed(() => {
+  try {
+    return new Date(__BUILD_DATE__).toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+  } catch {
+    return __BUILD_DATE__
+  }
+})
 let   _installPromptEvt = null
 
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -428,7 +449,57 @@ function relativeDate(ts) {
   color: var(--color-text-muted);
   opacity: 0.35;
   letter-spacing: 0.05em;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
 }
+.app-version:hover { opacity: 0.65; }
+
+.build-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.build-dialog {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 24px 28px;
+  min-width: 220px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.build-dialog-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--color-text);
+  margin: 0;
+}
+.build-dialog-date {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+.build-dialog-close {
+  margin-top: 8px;
+  padding: 8px 24px;
+  border-radius: 8px;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  align-self: center;
+}
+.build-dialog-close:hover { opacity: 0.85; }
 
 .lib-theme-btn {
   position: absolute;
