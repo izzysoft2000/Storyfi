@@ -391,6 +391,17 @@ export const usePlaybackStore = defineStore('playback', {
       _audioEl.src  = getSilentBlobUrl()
       _audioEl.play().catch(() => {})
 
+      // iOS SpeechSynthesis also requires a synchronous speak() call inside the
+      // user-gesture handler to unlock the TTS audio session. Without this, any
+      // speak() call made after an await is silently ignored (onend never fires).
+      // We speak a zero-volume space now; the real cancel()+speak() sequence
+      // in _startGroupAtOffset will cancel this and start the actual content.
+      if ('speechSynthesis' in window && groups.some(g => g.livePlayback)) {
+        const unlock = new SpeechSynthesisUtterance(' ')
+        unlock.volume = 0
+        speechSynthesis.speak(unlock)
+      }
+
       _groups = groups
       _wordPositionCache = new Map()
 
