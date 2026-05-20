@@ -128,6 +128,7 @@ let _waveformData = null
 let _browserPausedGroupIdx   = -1
 let _browserPausedSentenceIdx = -1
 let _browserGeneration = 0  // incremented on every new TTS session; stale closures self-cancel
+let _browserSessionId  = 0  // incremented ONLY on intentional stop/pause/seek — not on group hops
 const _debugLog = []       // TEMP: accumulates voice-assignment lines; alerted on stop
 const WAVEFORM_BARS = 200
 
@@ -491,9 +492,10 @@ export const usePlaybackStore = defineStore('playback', {
         const si = sentences.findIndex(s => s.id === this.currentSentenceId)
         _browserPausedGroupIdx    = this.currentGroupIdx
         _browserPausedSentenceIdx = Math.max(0, si)
-        // Increment generation BEFORE cancel() so the speakNext closure sees a
-        // stale generation and does not advance to the next sentence on onend/onerror.
+        // Invalidate the speakNext closure BEFORE cancel() so it doesn't
+        // advance to the next sentence when onend/onerror fires.
         _browserGeneration++
+        _browserSessionId++
         speechSynthesis.cancel()
         _audioCtx?.suspend()
       } else {
@@ -732,12 +734,15 @@ export const usePlaybackStore = defineStore('playback', {
           }
         }
 
-        // Generation stamp — if _browserGeneration changes, this closure is stale
-        // and must not speak or chain to the next group.
-        const myGeneration = ++_browserGeneration
+        // Session stamp — only invalidated by intentional stop/pause/seek, NOT by
+        // _stopSourceNode() calls during normal group transitions. This prevents the
+        // speakNext closure for sentences 1+ from appearing stale when _startGroup
+        // increments _browserGeneration as part of advancing to the next group.
+        const mySession = ++_browserSessionId
+        ++_browserGeneration  // keep _browserGeneration in sync for other callers
 
         const speakNext = () => {
-          if (_browserGeneration !== myGeneration) return  // stale — another session started
+          if (_browserSessionId !== mySession) return  // stale — stop/pause/seek fired
           if (!this.isPlaying || si >= sentences.length) {
             if (this.isPlaying) this._startGroup(groupIdx + 1)
             return
@@ -759,9 +764,9 @@ export const usePlaybackStore = defineStore('playback', {
             const voices = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
             const v = voices.find(v => v.voiceURI === group._voiceURI)
             if (v) utt.voice = v
-            _debugLog.push(`gen=${myGeneration}/_bg=${_browserGeneration} s${siIdx}: found=${v ? v.name : 'NO'} set=${utt.voice ? utt.voice.name : 'NO'}`)
+            _debugLog.push(`ses=${mySession}/_bs=${_browserSessionId} s${siIdx}: found=${v ? v.name : 'NO'} set=${utt.voice ? utt.voice.name : 'NO'}`)
           } else {
-            _debugLog.push(`gen=${myGeneration}/_bg=${_browserGeneration} s${siIdx}: NO _voiceURI`)
+            _debugLog.push(`ses=${mySession}/_bs=${_browserSessionId} s${siIdx}: NO _voiceURI`)
           }
           utt.onend   = speakNext
           utt.onerror = speakNext
@@ -845,7 +850,8 @@ export const usePlaybackStore = defineStore('playback', {
     },
 
     _cleanup() {
-      this._stopSourceNode()  // also increments _browserGeneration
+      _browserSessionId++    // invalidate any in-flight speakNext closures
+      this._stopSourceNode() // also increments _browserGeneration
       this._stopRaf()
       _audioEl?.pause()  // explicit stop — _stopSourceNode() no longer pauses
 
