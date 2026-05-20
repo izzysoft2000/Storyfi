@@ -749,7 +749,9 @@ export const usePlaybackStore = defineStore('playback', {
           speechSynthesis.speak(utt)
         }
         speechSynthesis.cancel()
-        speakNext()
+        // Browsers (Chrome, iOS Safari) ignore utt.voice on the first speak() call
+        // made immediately after cancel(). A short delay lets the engine reset.
+        setTimeout(speakNext, 50)
         return
       }
 
