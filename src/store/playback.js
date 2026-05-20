@@ -703,6 +703,11 @@ export const usePlaybackStore = defineStore('playback', {
 
       // ── Browser live playback via SpeechSynthesis ──────────────────────────
       if (buf._browserLive) {
+        // Stop the silent-unlock loop — it's only needed for <audio> element playback.
+        // Leaving it running while SpeechSynthesis speaks can cause an iOS audio
+        // session conflict that silences the TTS output entirely.
+        if (_audioEl) { _audioEl.loop = false; _audioEl.pause() }
+
         const group    = buf.group
         const sentences = group.sentences ?? []
         const groupOffset = this.groupOffsets[groupIdx]
@@ -754,9 +759,9 @@ export const usePlaybackStore = defineStore('playback', {
             const voices = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
             const v = voices.find(v => v.voiceURI === group._voiceURI)
             if (v) utt.voice = v
-            _debugLog.push(`s${siIdx}: uri="${group._voiceURI.slice(-30)}" found=${v ? v.name : 'NO'} set=${utt.voice ? utt.voice.name : 'NO'}`)
+            _debugLog.push(`gen=${myGeneration}/_bg=${_browserGeneration} s${siIdx}: found=${v ? v.name : 'NO'} set=${utt.voice ? utt.voice.name : 'NO'}`)
           } else {
-            _debugLog.push(`s${siIdx}: NO _voiceURI on group`)
+            _debugLog.push(`gen=${myGeneration}/_bg=${_browserGeneration} s${siIdx}: NO _voiceURI`)
           }
           utt.onend   = speakNext
           utt.onerror = speakNext
