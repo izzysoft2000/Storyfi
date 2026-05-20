@@ -748,24 +748,18 @@ export const usePlaybackStore = defineStore('playback', {
           utt.onerror = speakNext
           speechSynthesis.speak(utt)
         }
-        speechSynthesis.cancel()
-        // iOS/Chrome: utt.voice is silently ignored on the very first speak() after
-        // cancel(). Fix: prime the engine with a zero-volume utterance using the target
-        // voice; when its onend fires the engine has already locked onto the voice and
-        // will honour it for every subsequent speak() — including speakNext's first call.
-        setTimeout(() => {
-          const primer = new SpeechSynthesisUtterance('.')
-          primer.volume = 0
-          primer.rate   = 10
-          if (group._voiceURI) {
-            const vs = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
-            const v  = vs.find(v => v.voiceURI === group._voiceURI)
-            if (v) primer.voice = v
-          }
-          primer.onend   = speakNext
-          primer.onerror = speakNext
-          speechSynthesis.speak(primer)
-        }, 50)
+        // Only cancel if the engine is actively speaking/pending; cancelling an idle
+        // engine puts iOS/Chrome into a reset state where utt.voice is ignored on the
+        // very next speak(). When nothing is queued we call speakNext() directly and
+        // the voice assignment is honoured. When we DO need to cancel (seek while
+        // playing), add a delay so the engine settles before the next speak().
+        const engineBusy = speechSynthesis.speaking || speechSynthesis.pending
+        if (engineBusy) {
+          speechSynthesis.cancel()
+          setTimeout(speakNext, 100)
+        } else {
+          speakNext()
+        }
         return
       }
 
