@@ -706,9 +706,9 @@ export const usePlaybackStore = defineStore('playback', {
       // ── Browser live playback via SpeechSynthesis ──────────────────────────
       if (buf._browserLive) {
         // Stop the silent-unlock loop — it's only needed for <audio> element playback.
-        // Leaving it running while SpeechSynthesis speaks can cause an iOS audio
-        // session conflict that silences the TTS output entirely.
-        if (_audioEl) { _audioEl.loop = false; _audioEl.pause() }
+        // Only disable the loop; do NOT pause() — on iOS, pausing the <audio> element
+        // deactivates the audio session that SpeechSynthesis requires to produce output.
+        if (_audioEl) _audioEl.loop = false
 
         const group    = buf.group
         const sentences = group.sentences ?? []
