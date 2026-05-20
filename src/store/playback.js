@@ -705,11 +705,6 @@ export const usePlaybackStore = defineStore('playback', {
 
       // ── Browser live playback via SpeechSynthesis ──────────────────────────
       if (buf._browserLive) {
-        // Stop the silent-unlock loop — it's only needed for <audio> element playback.
-        // Only disable the loop; do NOT pause() — on iOS, pausing the <audio> element
-        // deactivates the audio session that SpeechSynthesis requires to produce output.
-        if (_audioEl) _audioEl.loop = false
-
         const group    = buf.group
         const sentences = group.sentences ?? []
         const groupOffset = this.groupOffsets[groupIdx]
@@ -772,11 +767,8 @@ export const usePlaybackStore = defineStore('playback', {
           utt.onerror = speakNext
           speechSynthesis.speak(utt)
         }
-        // iOS requires speechSynthesis.cancel() before the first speak() to properly
-        // initialize the engine — without it speak() queues silently and onend never
-        // fires. Always cancel and wait a short delay before starting.
         speechSynthesis.cancel()
-        setTimeout(speakNext, 150)
+        setTimeout(speakNext, 50)
         return
       }
 
