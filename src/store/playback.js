@@ -476,6 +476,12 @@ export const usePlaybackStore = defineStore('playback', {
     pause() {
       if (!this.isPlaying || this.isPaused) return
 
+      if (_debugLog.length) {
+        const msg = _debugLog.join('\n')
+        _debugLog.length = 0
+        setTimeout(() => alert('VOICE DEBUG:\n' + msg), 300)
+      }
+
       const buf = _buffers[this.currentGroupIdx]
       if (buf?._browserLive && 'speechSynthesis' in window) {
         // Browser TTS: speechSynthesis.pause() is unreliable — cancel immediately
@@ -554,11 +560,6 @@ export const usePlaybackStore = defineStore('playback', {
     stop() {
       this._cleanup()
       _editorRef?.clearHighlight?.()
-      if (_debugLog.length) {
-        const msg = _debugLog.join('\n')
-        _debugLog.length = 0
-        alert('VOICE DEBUG:\n' + msg)
-      }
     },
 
     /**
