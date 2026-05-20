@@ -128,6 +128,7 @@ let _waveformData = null
 let _browserPausedGroupIdx   = -1
 let _browserPausedSentenceIdx = -1
 let _browserGeneration = 0  // incremented on every new TTS session; stale closures self-cancel
+const _debugLog = []       // TEMP: accumulates voice-assignment lines; alerted on stop
 const WAVEFORM_BARS = 200
 
 // ─── Pure helpers (no Vue/Pinia dependency) ───────────────────────────────────
@@ -323,7 +324,7 @@ export const usePlaybackStore = defineStore('playback', {
      */
     waveformVersion: 0,
 
-    /** Temporary debug string shown in player bar for diagnosing voice issues */
+    /** Temporary debug flag — shows alert on stop */
     debugMsg: '',
   }),
 
@@ -553,6 +554,11 @@ export const usePlaybackStore = defineStore('playback', {
     stop() {
       this._cleanup()
       _editorRef?.clearHighlight?.()
+      if (_debugLog.length) {
+        const msg = _debugLog.join('\n')
+        _debugLog.length = 0
+        alert('VOICE DEBUG:\n' + msg)
+      }
     },
 
     /**
@@ -747,9 +753,9 @@ export const usePlaybackStore = defineStore('playback', {
             const voices = _browserVoices.length ? _browserVoices : speechSynthesis.getVoices()
             const v = voices.find(v => v.voiceURI === group._voiceURI)
             if (v) utt.voice = v
-            this.debugMsg = `s${siIdx}: uri="${group._voiceURI.slice(-20)}" found=${v ? v.name : 'NO'} set=${utt.voice ? utt.voice.name : 'NO'}`
+            _debugLog.push(`s${siIdx}: uri="${group._voiceURI.slice(-30)}" found=${v ? v.name : 'NO'} set=${utt.voice ? utt.voice.name : 'NO'}`)
           } else {
-            this.debugMsg = `s${siIdx}: NO _voiceURI on group`
+            _debugLog.push(`s${siIdx}: NO _voiceURI on group`)
           }
           utt.onend   = speakNext
           utt.onerror = speakNext
