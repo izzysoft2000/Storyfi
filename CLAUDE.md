@@ -1,7 +1,7 @@
 # STORYFI — Planning Specification (`CLAUDE.md`)
 > **Role**: Senior Architect / Product Manager Blueprint  
-> **Version**: 1.2 — All 10 Questions Decided. Specification Complete.  
-> **Last updated**: 2026-04-04  
+> **Version**: 1.3 — Google Drive integration spec added (§20).  
+> **Last updated**: 2026-05-22  
 > **Status**: Pre-implementation. Do not begin coding until this document is approved and sections marked `[DECIDED]`.
 
 ---
@@ -184,6 +184,14 @@ interface Project {
   outputFolderHandle: FileSystemDirectoryHandle | null; // Per-project output folder
   outputFolderName: string | null;   // Display name only e.g. "Novel-Ch1"
   outputFolderPromptDismissed: boolean; // true = user chose "Don't ask again"
+
+  // ── Google Drive fields (§20) ────────────────────────────────────────────
+  localPresence: "active" | "archived" | "local-only"; // default: "local-only"
+  driveFolderId: string | null;       // Drive folder ID for this project's audio
+  driveProjectFileId: string | null;  // Drive file ID for project.json
+  driveSyncedAt: number | null;       // Unix timestamp of last successful sync
+  driveSyncStatus: "synced" | "pending" | "uploading" | "error" | null;
+  waveformSamples: number[] | null;   // Persisted 200-value amplitude array for Drive-archived playback
 }
 ```
 
@@ -223,6 +231,9 @@ interface ParagraphGroup {
   endMs: number | null;
   stitchStatus: "pending" | "stitching" | "ready" | "error";
   stitchError: string | null;
+
+  // ── Google Drive fields (§20) ────────────────────────────────────────────
+  driveAudioFileId: string | null;  // Drive file ID for this group's stitched MP3
 }
 ```
 
@@ -1777,3 +1788,367 @@ async function appendProject(targetId, sourceId, position = 'end') {
 | Source and target use different providers | Role conflict screen shows voice mismatch warning |
 | Append would exceed storage quota | Pre-check blob sizes, warn user before confirming |
 | User appends same project twice | Allowed — creates duplicate paragraph groups with new IDs |
+
+---
+
+## 20. Google Drive Integration
+
+> **Status**: Fully decided. Ready to implement in Phase 7.
+
+### 20.1 Architecture — Drive as Mirror (Model B)
+
+IndexedDB is always the **working store** — the app functions fully offline. Google Drive is a **cloud mirror** that syncs automatically when online. Audio blobs for active projects exist in both. Archived projects have audio in Drive only; it streams on demand and is downloaded explicitly by the user.
+
+```
+IndexedDB (always)          Google Drive (when connected)
+──────────────────          ─────────────────────────────
+Project metadata        ←sync→  project.json
+Stitched audio blobs    ←sync→  audio/NNN_role_pN.mp3
+Sentence blobs               ✗  (never synced — working files only)
+API keys                     ✗  (never synced — local secrets)
+```
+
+**Rationale:** Model A (Drive as primary) is fragile offline. Model C (export-only) is too limited to justify OAuth overhead. Model B gives cloud backup + multi-device access while preserving the offline-first guarantee.
+
+### 20.2 Authentication
+
+- **Library**: Google Identity Services (GIS) — `accounts.google.com/gsi/client`
+- **Scope**: `https://www.googleapis.com/auth/drive.file` — access only to files Storyfi created, not the user's full Drive. This is critical for user trust.
+- **Token lifecycle**: Access token lives in JS memory only (never IndexedDB). Silent re-auth via `prompt: 'none'` on app load if the user previously consented.
+- **Sign-in is app-level**, not per-project. One connected account for the app; which projects sync is per-project.
+- **Sign-out**: clears the in-memory token. Drive-backed projects show as "Signed out" in Library but remain fully usable via local cache.
+
+```javascript
+// src/storage/drive-auth.js
+let _accessToken = null  // never persisted
+
+export const getAccessToken = () => _accessToken
+export const setAccessToken = (token) => { _accessToken = token }
+export const clearAccessToken = () => { _accessToken = null }
+
+// Attempt silent re-auth on app load
+export async function trySilentSignIn() {
+  return new Promise((resolve) => {
+    google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      prompt: '',  // silent — no popup
+      callback: (response) => {
+        if (response.access_token) setAccessToken(response.access_token)
+        resolve(!!response.access_token)
+      },
+    }).requestAccessToken()
+  })
+}
+```
+
+### 20.3 Project Storage States
+
+Every project has a `localPresence` field (added to `Project` interface in §6.1):
+
+| State | Audio in IndexedDB | Audio in Drive | Playback |
+|---|---|---|---|
+| `"local-only"` | ✅ Always | ❌ None | Instant, offline |
+| `"active"` | ✅ Cached | ✅ Synced | Instant, offline-capable |
+| `"archived"` | ❌ Evicted | ✅ In Drive | Streamed on demand; downloadable |
+
+**Transitions:**
+- `local-only` → `active`: user connects Drive and enables sync for the project
+- `active` → `archived`: user clicks "Archive to Drive" in Storage Manager (requires Drive sync to be complete)
+- `archived` → `active`: user clicks "Download for offline" in Library or Editor
+- Any state → `local-only`: user disconnects Drive or disables sync for the project
+
+### 20.4 Library View
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  LIBRARY SCREEN                                                 │
+│                                                                 │
+│  [ + New Project ]  [ Import .md ]        [ ☁ Sign in to Drive ]│
+│                     (after sign-in →)     [ ● izzy@gmail.com   ]│
+│                                                                 │
+│  Recent Projects                                                │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 📄 My Novel Ch.1   45MB  2 days ago    ☁ Synced     [→] │  │
+│  │ 📄 Podcast Script  12MB  1 week ago    ☁ Archived   [→] │  │
+│  │ 📄 Test Project     0MB  3 weeks ago   💾 Local     [→] │  │
+│  │ 📄 Old Draft          —  Drive only    ☁ Not local  [↓] │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  This Device  ████████░░░░░░  1.2 GB / 8.4 GB  [ Manage ]      │
+│  Google Drive ████░░░░░░░░░░  3.8 GB / 15 GB                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Drive status badges per project row:**
+
+| Badge | Meaning |
+|---|---|
+| `☁ Synced` | Local and Drive match |
+| `☁ Uploading…` | Sync in progress |
+| `☁ Modified` | Local has unsaved changes not yet pushed |
+| `☁ Archived` | Audio in Drive only; project metadata local |
+| `☁ Not local` | Project exists in Drive, never downloaded |
+| `⚠ Sync error` | With inline retry button |
+
+**Drive-only projects** (exist in Drive, never opened on this device) appear in the list with a `[↓]` download-and-open action instead of `[→]`. Clicking `[↓]` downloads the project metadata first, opens it in the editor, and lazily fetches audio blobs as they are played or exported.
+
+**Conflict resolution** (same project edited offline on two devices): second sync wins by default. A dismissible banner offers: *"Drive has a newer version of 'My Novel Ch.1'. Keep local changes as a new copy?"*
+
+### 20.5 New Project Dialog
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  New Project                                             │
+│                                                          │
+│  Title: [________________________________]               │
+│                                                          │
+│  Save to:                                                │
+│  ┌────────────────────┐  ┌──────────────────────────┐   │
+│  │  💾  This Device   │  │  ☁  Google Drive         │   │
+│  │                    │  │  Syncs across devices    │   │
+│  │  Works offline     │  │  Requires sign-in        │   │
+│  └────────────────────┘  └──────────────────────────┘   │
+│                                    ↑ triggers sign-in    │
+│                                      if not connected    │
+│                                                          │
+│  [ Cancel ]                      [ Create Project ]      │
+└──────────────────────────────────────────────────────────┘
+```
+
+- Default: last-used choice pre-selected
+- If Drive not connected: selecting "Google Drive" triggers the GIS sign-in popup inline; on success the project is created and Drive is now the target
+- The "Save to" row is designed to accommodate future providers (iCloud, Dropbox) as additional chips
+
+Import `.md` follows the same dialog.
+
+### 20.6 Opening Projects
+
+**Local / active projects:** unchanged — load from IndexedDB instantly.
+
+**Archived projects:** metadata + editor content load instantly from IndexedDB. Playlist rows show `☁` instead of duration. Playback fetches audio from Drive on-demand (see §20.8). The Editor header shows a subtle "Archived — playing from Drive" notice with a "Download for offline" button.
+
+**Drive-only projects (never cached locally):** Library shows a brief loading indicator on the row as project metadata downloads. Once metadata is in IndexedDB, the editor opens. Audio fetches lazily on first play.
+
+**No explicit "Close" button needed.** Auto-save already persists to IndexedDB on every change. When returning to Library, a background task pushes outstanding changes to Drive. The Drive sync badge in Library reflects in-progress state.
+
+### 20.7 Drive File Structure
+
+Using `drive.file` scope, Storyfi only sees files it created. Structure:
+
+```
+Google Drive/
+└── Storyfi/                         ← app folder, created once
+    ├── My Novel Ch.1/
+    │   ├── project.json             ← metadata, cast, sentences (no blobs — ~50 KB)
+    │   └── audio/
+    │       ├── 001_narrator_p1.mp3
+    │       └── 002_elena_p1.mp3
+    └── Podcast Script/
+        ├── project.json
+        └── audio/
+            └── 001_host_p1.mp3
+```
+
+- `project.json` = full `Project` record minus `outputFolderHandle` (not serialisable) and minus audio blobs (stored as separate files)
+- Filenames match the existing disk-output convention (§6.9)
+- Human-readable in Drive; users can access audio directly from drive.google.com
+
+### 20.8 Audio Streaming for Archived Projects
+
+Drive requires an `Authorization: Bearer <token>` header — cannot be set on `<audio src="">` directly. Implementation uses a **Service Worker proxy**:
+
+```
+<audio src="/drive-stream/{driveFileId}">
+        │
+        ▼
+Service Worker intercepts /drive-stream/*
+  └── Adds Authorization: Bearer <token> (token shared via postMessage on sign-in)
+  └── Forwards to https://www.googleapis.com/drive/v3/files/{id}?alt=media
+  └── Returns the streamed response — browser handles HTTP range requests natively
+        │
+        ▼
+Streaming with seek support — no full download before playback
+```
+
+**Token sharing to Service Worker:**
+```javascript
+// On sign-in success:
+navigator.serviceWorker.ready.then(reg => {
+  reg.active.postMessage({ type: 'SET_DRIVE_TOKEN', token: accessToken })
+})
+```
+
+**v1 fallback** (no SW or SW not yet active): `fetch()` with auth headers → blob URL. Downloads the full file (typically 1–5 MB per group) before play. Acceptable latency for archived projects.
+
+**Waveform for archived groups:** The `waveformSamples` array (200 floats, ~1.6 KB) is persisted in `project.json` at archive time. The waveform canvas renders immediately without re-decoding.
+
+### 20.9 "Download for offline" Flow
+
+```
+User clicks "Download for offline" (Library row or Editor header)
+        │
+        ▼
+For each ParagraphGroup in project where driveAudioFileId is set:
+  └── fetch(driveFileId, { Authorization: Bearer <token> }) → blob
+  └── store blob in IndexedDB("audio_stitched", group.id)
+        │
+        ▼
+project.localPresence = "active"
+project.audioSizeBytes updated
+Drive sync badge updates to "☁ Synced"
+"Archived" notice in Editor header disappears
+```
+
+Progress shown as a download bar in the Editor header: *"Downloading audio… 3 / 12 tracks"*. The project is fully playable from IndexedDB once complete.
+
+**Once downloaded it stays.** The user explicitly controls eviction via "Archive to Drive" in Storage Manager. There is no automatic cache eviction of downloaded audio.
+
+### 20.10 Storage Manager — Drive-Aware
+
+```
+Storage
+──────────────────────────────────────────────────────
+  This Device    ████████░░░░░░  1.2 GB / 8.4 GB
+  Google Drive   ████░░░░░░░░░░  3.8 GB / 15 GB
+──────────────────────────────────────────────────────
+
+Project Storage
+──────────────────────────────────────────────────────────────────────
+My Novel Ch.1   Audio: 45MB  ☁ Synced    [ Archive to Drive ] [ Delete ]
+Podcast Script  Audio: 0MB   ☁ Archived  [ Download          ] [ Delete ]
+Test Project    Audio: 12MB  💾 Local     [ Clear Audio        ] [ Delete ]
+──────────────────────────────────────────────────────────────────────
+```
+
+**"Archive to Drive"** (active projects):
+1. Confirms Drive has all audio blobs (synced)
+2. Clears IndexedDB `audio_stitched` blobs for this project
+3. Sets `project.localPresence = "archived"`
+4. `project.audioSizeBytes` → 0 (local) — Drive quota shown separately
+5. No data loss — audio fully preserved in Drive
+
+**"Download"** (archived projects): same as §20.9.
+
+**"Clear Audio"** (local-only projects): unchanged from §6.10 — destructive, warns user since there is no cloud copy.
+
+**"Delete"** (Drive-synced projects) shows a choice:
+```
+┌────────────────────────────────────────────────────┐
+│  Delete "My Novel Ch.1"?                           │
+│                                                    │
+│  ○ Remove from this device only                    │
+│    Still available in Google Drive                 │
+│                                                    │
+│  ○ Delete everywhere                               │
+│    Removes from Drive permanently                  │
+│                                                    │
+│  [ Cancel ]                    [ Delete ]          │
+└────────────────────────────────────────────────────┘
+```
+
+### 20.11 Sync Pipeline
+
+Sync runs automatically in the background after:
+- A new stitched audio blob is written to IndexedDB
+- Project metadata changes (cast, sentences, editor state)
+- App comes back online after being offline
+
+```javascript
+// src/storage/drive-sync.js
+
+async function syncProject(project) {
+  const token = getAccessToken()
+  if (!token || project.localPresence === 'local-only') return
+
+  // 1. Ensure Storyfi app folder exists
+  const appFolderId = await ensureAppFolder(token)
+
+  // 2. Ensure per-project folder exists
+  const folderId = project.driveFolderId
+    ?? await createProjectFolder(token, appFolderId, project.title)
+
+  // 3. Upload project.json (metadata)
+  await uploadFile(token, folderId, 'project.json',
+    JSON.stringify(projectToJSON(project)), 'application/json',
+    project.driveProjectFileId  // update if exists, create if null
+  )
+
+  // 4. Upload any stitched audio blobs not yet in Drive
+  for (const group of project.paragraphGroups) {
+    if (group.stitchStatus !== 'ready') continue
+    if (group.driveAudioFileId) continue  // already uploaded
+
+    const blob = await getAudioStitched(group.id)
+    if (!blob) continue
+
+    const fileId = await uploadFile(token, folderId + '/audio',
+      group.stitchedDiskFilename, blob, 'audio/mpeg'
+    )
+    group.driveAudioFileId = fileId
+  }
+
+  // 5. Update project record
+  project.driveSyncedAt  = Date.now()
+  project.driveSyncStatus = 'synced'
+  await db.putProject(project)
+}
+```
+
+**Retry on failure**: exponential backoff (2 s → 4 s → 8 s), max 3 attempts. After 3 failures: `driveSyncStatus = 'error'`, badge shows `⚠ Sync error` with retry button.
+
+### 20.12 Service Worker Cache Strategy Update
+
+Add to §5.2 table:
+
+| Resource Type | Cache Strategy |
+|---|---|
+| Drive API calls (`/drive-stream/*`) | **Network Only** — auth token required, cannot cache |
+| Drive access token | **JS memory only** — never SW cache, never IndexedDB |
+
+### 20.13 New Files (additions to §18 file structure)
+
+```
+src/
+├── storage/
+│   ├── drive-auth.js       ← GIS token management (getAccessToken, trySilentSignIn)
+│   ├── drive-sync.js       ← upload/download, syncProject(), ensureAppFolder()
+│   └── drive-stream.js     ← SW proxy message helper, fetch-fallback stream
+├── modals/
+│   └── DriveConflictModal.vue  ← conflict resolution dialog
+└── sw-drive.js             ← Service Worker handler for /drive-stream/* routes
+```
+
+### 20.14 Implementation Phase
+
+Google Drive integration is **Phase 7** — after core playback and export (Phases 1–6) are stable.
+
+Phase 7 tasks:
+- [ ] Google Identity Services integration — sign-in, silent re-auth, sign-out
+- [ ] `drive-auth.js` token management
+- [ ] `drive-sync.js` — folder creation, project.json upload, audio blob upload
+- [ ] Service Worker `/drive-stream/*` proxy route
+- [ ] Library view Drive UI — badges, Drive storage bar, Drive-only project rows
+- [ ] New Project dialog — "Save to" picker
+- [ ] Archived project playback — SW stream + fetch fallback
+- [ ] "Download for offline" flow with progress indicator
+- [ ] Storage Manager — Archive to Drive, Download, Drive-aware Delete dialog
+- [ ] `waveformSamples` persistence on archive
+- [ ] Conflict detection + `DriveConflictModal`
+- [ ] Offline banner when Drive project opened without connection
+- [ ] Drive quota display (Drive REST API `about.get` endpoint)
+
+### 20.15 Key Decisions
+
+| Decision | Choice |
+|---|---|
+| Drive role | Mirror (IndexedDB primary, Drive secondary) |
+| Auth scope | `drive.file` — Storyfi files only |
+| Token storage | JS memory only |
+| Sentence blobs in Drive | ❌ Never — working files; stitched MP3s only |
+| Offline play for archived projects | "Download for offline" is explicit; once downloaded it stays until user archives again |
+| Auto-archive | ❌ Not in v1 — user-controlled only |
+| Streaming implementation | Service Worker proxy (range-request capable) with fetch+blob-URL fallback |
+| Waveform for archived groups | `waveformSamples[]` persisted in `project.json` at archive time |
+| Conflict resolution | Drive version wins by default; offer "Keep local as new copy" |
+| Future providers (iCloud, Dropbox) | "Save to" picker in New Project dialog is designed for extensibility; provider abstraction to be defined in Phase 7 |
