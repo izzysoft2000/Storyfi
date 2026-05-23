@@ -1,7 +1,7 @@
 # STORYFI — Planning Specification (`CLAUDE.md`)
 > **Role**: Senior Architect / Product Manager Blueprint  
-> **Version**: 1.3 — Google Drive integration spec added (§20).  
-> **Last updated**: 2026-05-22  
+> **Version**: 1.4 — Document import spec added (§21).  
+> **Last updated**: 2026-05-23  
 > **Status**: Pre-implementation. Do not begin coding until this document is approved and sections marked `[DECIDED]`.
 
 ---
@@ -1427,6 +1427,9 @@ npm install idb
 # Export + Audio encoding
 npm install jszip lamejs
 
+# Document import (add Phase 2) — lazy-loaded, only bundled when used
+npm install mammoth   # .docx → HTML (§21)
+
 # State (add Phase 3)
 npm install pinia
 ```
@@ -1457,6 +1460,12 @@ npm install pinia
 - [ ] In-memory voice cache per session
 - [ ] Voice preview button (previewUrl or short TTS sample)
 - [ ] Editor state auto-saved to IndexedDB
+- [ ] Import dialog — multi-format file picker (see §21)
+- [ ] `.docx` import via mammoth.js (lazy-loaded)
+- [ ] `.txt` import — paragraph split on double newlines
+- [ ] `.epub` import via JSZip — spine order + XHTML extraction
+- [ ] `.html` import via Tiptap `setContent()`
+- [ ] Post-import preview + confirm step before editor is populated
 
 ### Phase 3 — TTS Integration & Storage (Week 5–6)
 - [ ] Provider abstraction interface with `capabilities` flag
@@ -1607,6 +1616,12 @@ storyfi/
 │   ├── audio/
 │   │   ├── player.js            ← Web Audio API player
 │   │   └── timestamps.js        ← duration computation
+│   ├── import/
+│   │   ├── index.js             ← dispatcher: detects format, calls correct importer
+│   │   ├── docx.js              ← mammoth.js wrapper → HTML string
+│   │   ├── epub.js              ← JSZip + OPF spine parse → HTML string
+│   │   ├── txt.js               ← plain text → paragraph HTML
+│   │   └── html.js              ← passthrough sanitiser
 │   ├── export/
 │   │   ├── json.js
 │   │   ├── html.js
@@ -2152,3 +2167,196 @@ Phase 7 tasks:
 | Waveform for archived groups | `waveformSamples[]` persisted in `project.json` at archive time |
 | Conflict resolution | Drive version wins by default; offer "Keep local as new copy" |
 | Future providers (iCloud, Dropbox) | "Save to" picker in New Project dialog is designed for extensibility; provider abstraction to be defined in Phase 7 |
+
+---
+
+## 21. Document Import
+
+> **Status**: Decided. Phase 2 implementation.
+
+### 21.1 Design Principle
+
+Import only needs to get **structured text** into the Tiptap editor. The only formatting that matters is structural (headings, paragraphs, line breaks) — not visual (fonts, colours, margins, images). Each importer produces an HTML string that is passed to `editor.commands.setContent()`.
+
+### 21.2 Supported Formats
+
+| Format | Library | Fidelity | Bundle cost | Phase |
+|---|---|---|---|---|
+| `.md` | Tiptap built-in | ★★★★★ | 0 — already present | Phase 2 (existing) |
+| `.docx` | `mammoth.js` | ★★★★☆ | ~300 KB lazy | Phase 2 |
+| `.txt` | None | ★★★☆☆ | 0 | Phase 2 |
+| `.epub` | JSZip (already present) | ★★★★☆ | 0 extra | Phase 2 |
+| `.html` | Tiptap built-in | ★★★★☆ | 0 | Phase 2 |
+| Google Docs | Drive API → `.docx` → mammoth | ★★★★☆ | 0 extra | Phase 7 (Drive) |
+| `.pdf` | — | ★★☆☆☆ | ~900 KB | ❌ Not planned — extraction quality too poor for prose |
+| `.rtf` | — | ★★☆☆☆ | uncertain | ❌ Not planned — users can Save As .docx |
+
+**PDF is explicitly excluded.** pdfjs-dist is ~900 KB gzipped and produces frequent artifacts for prose (hyphenation splits, merged lines, headers mixed into body text). Users with PDFs should convert to `.docx` first.
+
+### 21.3 Import Dialog
+
+Replaces the existing "Import .md" button in the Library screen and New Project flow:
+
+```
+Import Document
+──────────────────────────────────────────────────────────────────
+  [ 📁 From your computer ]         [ ☁ From Google Drive ]
+                                      (shown only if signed in)
+
+  Supported:  .md   .docx   .txt   .epub   .html
+
+  ──────────────────────────────────────────────────────────────
+  ⓘ  Formatting is preserved where possible. Images, tables,
+     and visual styles are stripped — only text structure imports.
+```
+
+- File picker `accept` attribute: `.md,.docx,.txt,.epub,.html`
+- "From Google Drive" tab: visible only when Drive is connected (Phase 7); opens a Drive file picker filtered to supported MIME types
+- After file is parsed: a **preview step** shows the first ~500 chars of extracted text before populating the editor, giving the user a chance to cancel if the extraction looks wrong
+
+### 21.4 Format Implementations
+
+#### `.docx` — mammoth.js
+```javascript
+// src/import/docx.js
+export async function importDocx(file) {
+  const mammoth = await import('mammoth')   // lazy-loaded
+  const arrayBuffer = await file.arrayBuffer()
+  const result = await mammoth.convertToHtml({ arrayBuffer })
+  // result.messages lists any unsupported features (tables, images, etc.)
+  return { html: result.value, warnings: result.messages }
+}
+```
+
+Headings → Tiptap heading nodes, bold/italic → marks, lists → list nodes. Unsupported elements (tables, images, text boxes) are silently dropped.
+
+#### `.epub` — JSZip + OPF spine
+```javascript
+// src/import/epub.js
+export async function importEpub(file) {
+  const JSZip = await import('jszip')
+  const zip   = await JSZip.loadAsync(file)
+
+  // 1. Parse META-INF/container.xml → find OPF path
+  const containerXml = await zip.file('META-INF/container.xml').async('text')
+  const opfPath = parseOpfPath(containerXml)
+
+  // 2. Parse OPF manifest + spine → ordered list of XHTML hrefs
+  const opfXml  = await zip.file(opfPath).async('text')
+  const spine   = parseSpine(opfXml, opfPath)
+
+  // 3. Concatenate chapters in reading order
+  const chapters = await Promise.all(
+    spine.map(href => zip.file(href).async('text'))
+  )
+
+  // 4. Strip EPUB boilerplate, join with horizontal rule between chapters
+  const html = chapters.map(stripEpubBoilerplate).join('<hr>')
+  return { html, warnings: [] }
+}
+```
+
+Extracts chapter text in spine order — ideal for novels already in EPUB format. Chapter titles become headings; body prose becomes paragraphs.
+
+#### `.txt` — paragraph split
+```javascript
+// src/import/txt.js
+export function importTxt(text) {
+  const html = text
+    .split(/\n{2,}/)                            // double newline = paragraph break
+    .filter(p => p.trim().length > 0)
+    .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+    .join('')
+  return { html, warnings: [] }
+}
+```
+
+#### `.html` — passthrough
+```javascript
+// src/import/html.js
+export async function importHtml(file) {
+  const text = await file.text()
+  // Extract only the <body> content; Tiptap handles the rest
+  const body = text.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? text
+  return { html: body, warnings: [] }
+}
+```
+
+#### Dispatcher
+```javascript
+// src/import/index.js
+export async function importDocument(file) {
+  const ext = file.name.split('.').pop().toLowerCase()
+  switch (ext) {
+    case 'md':   return importMarkdown(file)   // existing path
+    case 'docx': return importDocx(file)
+    case 'epub': return importEpub(file)
+    case 'txt':  return importTxt(await file.text())
+    case 'html': return importHtml(file)
+    default:     throw new Error(`Unsupported format: .${ext}`)
+  }
+}
+```
+
+### 21.5 Post-Import Preview Step
+
+After parsing, before populating the editor, show a confirmation step:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Preview: My Novel Ch.1.docx                                    │
+│  ─────────────────────────────────────────────────────────────  │
+│  Chapter One                                                    │
+│                                                                 │
+│  The storm broke at dawn. Elena ran to the window and pressed   │
+│  her palm against the cold glass. The city below was silent,    │
+│  wrapped in the kind of stillness that only comes after…        │
+│                                                                 │
+│  ─────────────────────────────────────────────────────────────  │
+│  ⚠ 2 unsupported elements were skipped (table, image)          │
+│                                                                 │
+│  [ Cancel ]                               [ Import into Editor ]│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- Shows first ~500 characters of extracted text
+- Lists any warnings from the importer (skipped tables, images, etc.)
+- "Cancel" returns to the import dialog — nothing has been written to the editor
+- "Import into Editor" calls `editor.commands.setContent(html)` and saves to IndexedDB
+
+### 21.6 Google Docs Import (Phase 7)
+
+When Drive is connected, the "From Google Drive" tab opens a Drive file picker. Selecting a Google Doc triggers an export-as-docx then passes through the mammoth path:
+
+```javascript
+// src/import/gdocs.js
+export async function importGoogleDoc(fileId, token) {
+  const mimeType =
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=${mimeType}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  if (!res.ok) throw new Error(`Drive export failed: ${res.status}`)
+  const blob = await res.blob()
+  return importDocx(blob)   // reuses the mammoth path exactly
+}
+```
+
+The Drive picker is filtered to show: `application/vnd.google-apps.document`, `.docx`, `.md`, `.txt`, `.epub`.
+
+### 21.7 "Import .md" Button — Migration
+
+The existing Library screen "Import .md" button is replaced by the new "Import Document" button, which opens the import dialog. The `.md` path remains identical underneath — no regression.
+
+### 21.8 Key Decisions
+
+| Decision | Choice |
+|---|---|
+| PDF support | ❌ Excluded — extraction quality too poor, bundle cost too high |
+| RTF support | ❌ Excluded — users convert to .docx first |
+| Lazy loading | ✅ mammoth.js dynamically imported only on .docx selection |
+| EPUB library | JSZip (already a project dependency) — no extra package |
+| Post-import preview | ✅ Required — gives user chance to catch bad extractions |
+| Google Docs path | Drive API export-as-docx → reuse mammoth — no separate code path |
+| Formatting fidelity goal | Structural only (headings, paragraphs) — visual styles intentionally stripped |
