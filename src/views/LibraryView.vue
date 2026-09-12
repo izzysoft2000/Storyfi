@@ -32,6 +32,24 @@
       </button>
     </header>
 
+    <!-- Toolbar — stays fixed above the scrolling project grid -->
+    <div v-if="!loading" class="library__toolbar">
+      <div class="toolbar__left">
+        <span class="toolbar__count">Projects <span class="toolbar__count-num">({{ projects.length }})</span></span>
+        <button class="toolbar__add-btn" title="New Project" @click="createProject">+</button>
+      </div>
+      <div v-if="projects.length > 0" class="sort-control">
+        <span class="sort-label">Sort</span>
+        <button
+          v-for="opt in sortOptions"
+          :key="opt.value"
+          class="sort-btn"
+          :class="{ 'sort-btn--active': sortBy === opt.value }"
+          @click="setSortBy(opt.value)"
+        >{{ opt.label }}</button>
+      </div>
+    </div>
+
     <!-- Project Grid -->
     <main class="library__main">
       <div v-if="loading" class="library__empty">
@@ -46,19 +64,6 @@
         <button class="action-btn action-btn--primary" style="margin-top:20px" @click="createProject">
           + New Project
         </button>
-      </div>
-
-      <div v-if="projects.length > 0" class="library__toolbar">
-        <span class="sort-label">Sort</span>
-        <div class="sort-control">
-          <button
-            v-for="opt in sortOptions"
-            :key="opt.value"
-            class="sort-btn"
-            :class="{ 'sort-btn--active': sortBy === opt.value }"
-            @click="setSortBy(opt.value)"
-          >{{ opt.label }}</button>
-        </div>
       </div>
 
       <div v-if="projects.length > 0" class="project-grid">
@@ -659,12 +664,58 @@ function relativeDate(ts) {
   margin: 0;
 }
 
-/* ─── Sort Toolbar ───────────────────────────────────── */
+/* ─── Toolbar (fixed above the scrolling grid) ──────────── */
 .library__toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 48px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+  .library__toolbar { padding: 12px 16px; }
+}
+
+.toolbar__left {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  margin-bottom: 20px;
+}
+
+.toolbar__count {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+.toolbar__count-num {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.toolbar__add-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.toolbar__add-btn:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
 }
 
 .sort-label {
@@ -673,15 +724,17 @@ function relativeDate(ts) {
   letter-spacing: 0.08em;
   color: var(--color-text-muted);
   font-family: var(--font-ui);
+  margin-right: 4px;
 }
 
 .sort-control {
   display: flex;
+  align-items: center;
   gap: 2px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  padding: 2px;
+  padding: 2px 8px 2px 2px;
 }
 
 .sort-btn {
