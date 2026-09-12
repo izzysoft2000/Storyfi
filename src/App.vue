@@ -3,23 +3,32 @@
   v-if="view === 'library'"
   :can-install="!!installEvent"
   @open-project="navigateTo"
+  @open-solution="navigateToSolution"
   @install="triggerInstall"
   />
+  <SolutionView
+  v-else-if="view === 'solution'"
+  :solution-id="activeSolutionId"
+  @go-library="navigateLibrary"
+  @open-project="navigateTo"
+  />
   <EditorView v-else-if="view === 'editor'" :project-id="activeProjectId" @go-library="navigateLibrary" />
-  
+
 </template>
 
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
-import LibraryView from '@/views/LibraryView.vue'
-import EditorView  from '@/views/EditorView.vue'
+import LibraryView  from '@/views/LibraryView.vue'
+import SolutionView from '@/views/SolutionView.vue'
+import EditorView   from '@/views/EditorView.vue'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { useTheme } from '@/composables/usePanelLayout'
 
 const { initTheme } = useTheme()
 
-const view            = ref('library')
-const activeProjectId = ref(null)
+const view             = ref('library')
+const activeProjectId  = ref(null)
+const activeSolutionId = ref(null)
 
 // --- 1. Service Worker Update Logic ---
 // Auto-apply new builds as soon as they're detected — the app autosaves
@@ -42,19 +51,30 @@ async function triggerInstall() {
 }
 
 function parseHash() {
-  const hash = window.location.hash // e.g. "#/project/abc-123"
-  const match = hash.match(/^#\/project\/(.+)$/)
-  if (match) {
-    activeProjectId.value = match[1]
+  const hash = window.location.hash // e.g. "#/project/abc-123" or "#/solution/abc-123"
+  const projectMatch  = hash.match(/^#\/project\/(.+)$/)
+  const solutionMatch = hash.match(/^#\/solution\/(.+)$/)
+  if (projectMatch) {
+    activeProjectId.value  = projectMatch[1]
+    activeSolutionId.value = null
     view.value = 'editor'
+  } else if (solutionMatch) {
+    activeSolutionId.value = solutionMatch[1]
+    activeProjectId.value  = null
+    view.value = 'solution'
   } else {
-    activeProjectId.value = null
+    activeProjectId.value  = null
+    activeSolutionId.value = null
     view.value = 'library'
   }
 }
 
 function navigateTo(projectId) {
   window.location.hash = `/project/${projectId}`
+}
+
+function navigateToSolution(solutionId) {
+  window.location.hash = `/solution/${solutionId}`
 }
 
 function navigateLibrary() {

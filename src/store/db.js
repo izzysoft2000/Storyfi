@@ -3,8 +3,9 @@
  * Opens and manages the Storyfi IndexedDB database.
  * Uses the `idb` library for a clean promise-based API.
  *
- * Schema (v2):
- *   projects        — keyPath: "id"
+ * Schema (v3):
+ *   projects        — keyPath: "id"           (has optional "solutionId" FK)
+ *   solutions       — keyPath: "id"           (Solution = ordered group of Projects/"chapters")
  *   sentences       — keyPath: "id", index: "paragraphGroupId"
  *   audio_sentences — keyPath: "sentenceId"   (MP3 Blobs — raw sentences)
  *   audio_stitched  — keyPath: "groupId"      (MP3 Blobs — stitched paragraphs)
@@ -16,7 +17,7 @@
 import { openDB } from 'idb'
 
 const DB_NAME    = 'storyfi_db'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 let _db = null
 
@@ -46,6 +47,10 @@ export async function getDB() {
       // v2: cached voice preview MP3s — key: "{providerId}_{voiceId}"
       if (!db.objectStoreNames.contains('voice_previews')) {
         db.createObjectStore('voice_previews', { keyPath: 'key' })
+      }
+      // v3: Solutions — an ordered group of Projects (a "book" of "chapters")
+      if (!db.objectStoreNames.contains('solutions')) {
+        db.createObjectStore('solutions', { keyPath: 'id' })
       }
     }
   })
@@ -276,4 +281,56 @@ export async function deleteVoicePreview(key) {
 export async function getAllVoicePreviewKeys() {
   const db = await getDB()
   return db.getAllKeys('voice_previews')
+}
+
+// ─── Solutions ──────────────────────────────────────────────────────────────
+// A Solution groups Projects together (e.g. Chapters into a Book).
+// { id, title, projectOrder: string[], createdAt, updatedAt }
+
+export async function getAllSolutions() {
+  const db = await getDB()
+  return db.getAll('solutions')
+}
+
+export async function getSolution(id) {
+  const db = await getDB()
+  return db.get('solutions', id)
+}
+
+export async function saveSolution(solution) {
+  const db = await getDB()
+
+  // Strip Vue reactivity Proxy wrappers — IDB structured clone can't handle them.
+  let plain
+  try {
+    plain = JSON.parse(JSON.stringify(solution))
+  } catch (e) {
+    console.error('[db] saveSolution JSON serialization failed:', e)
+    plain = { ...solution }
+  }
+
+  await db.put('solutions', {
+    ...plain,
+    updatedAt: Date.now(),
+  })
+}
+
+/**
+ * Delete a Solution. Member projects are NOT deleted — they're unlinked
+ * (solutionId reset to null) and reappear in the standalone Projects list.
+ */
+export async function deleteSolutionFull(solution) {
+  const db = await getDB()
+  const tx = db.transaction(['solutions', 'projects'], 'readwrite')
+
+  const projectsStore = tx.objectStore('projects')
+  for (const projectId of solution.projectOrder ?? []) {
+    const project = await projectsStore.get(projectId)
+    if (project) {
+      await projectsStore.put({ ...project, solutionId: null })
+    }
+  }
+
+  await tx.objectStore('solutions').delete(solution.id)
+  await tx.done
 }

@@ -15,7 +15,7 @@ import { getAudioStitched } from '@/store/db.js'
  * Deterministic, filesystem-safe MP3 filename.
  * Format: 02_rolelabel_shortid.mp3
  */
-function buildFilename(group) {
+export function buildFilename(group) {
   const order = String(group.order ?? 1).padStart(2, '0')
   const label = String(group.roleLabel ?? 'unknown')
     .toLowerCase()
@@ -29,7 +29,7 @@ function buildFilename(group) {
 /**
  * Safe slug for ZIP filename.
  */
-function projectSlug(title) {
+export function projectSlug(title) {
   return String(title ?? 'storyfi')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
@@ -39,7 +39,7 @@ function projectSlug(title) {
 
 // ─── Download helper ────────────────────────────────────────────────────────
 
-function triggerDownload(content, filename, mimeType = 'application/octet-stream') {
+export function triggerDownload(content, filename, mimeType = 'application/octet-stream') {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -250,5 +250,79 @@ export async function exportZip(project, groups, onProgress) {
   }, ({ percent }) => onProgress?.(0.97 + (percent / 100) * 0.03))
 
   triggerDownload(zipBlob, `${projectSlug(project.title)}_export.zip`)
+  onProgress?.(1)
+}
+
+// ─── Compile Book (Solution → single ZIP across member Projects) ────────────
+
+/**
+ * Build and download one combined ZIP for a Solution — each member Project
+ * (in `projects`, already ordered per Solution.projectOrder) becomes a
+ * numbered subfolder of its own stitched MP3s, plus a book.json manifest
+ * with cumulative book-wide timing across all chapters.
+ */
+export async function compileSolution(solution, projects, onProgress) {
+  const chapterGroups = projects.map(p => ({
+    project: p,
+    ready: (p.paragraphGroups ?? []).filter(g => g.stitchStatus === 'ready'),
+  })).filter(c => c.ready.length > 0)
+
+  if (chapterGroups.length === 0) throw new Error('No generated audio to compile yet.')
+
+  const zip = new JSZip()
+  const totalGroups = chapterGroups.reduce((sum, c) => sum + c.ready.length, 0)
+  let done = 0
+  const tick = () => { done++; onProgress?.(done / (totalGroups + 1)) }
+
+  let cumulativeMs = 0
+  const chapters = []
+
+  for (let i = 0; i < chapterGroups.length; i++) {
+    const { project, ready } = chapterGroups[i]
+    const chapterSlug = `${String(i + 1).padStart(2, '0')}_${projectSlug(project.title)}`
+    const folder = zip.folder(chapterSlug)
+    const chapterStartMs = cumulativeMs
+    const paragraphs = []
+
+    for (const group of ready) {
+      const blob = await getAudioStitched(group.id)
+      if (blob) folder.file(buildFilename(group), blob)
+      paragraphs.push({
+        order:      group.order,
+        role:       group.roleLabel,
+        file:       `${chapterSlug}/${buildFilename(group)}`,
+        startMs:    cumulativeMs,
+        endMs:      cumulativeMs + (group.totalDurationMs ?? 0),
+        durationMs: group.totalDurationMs ?? 0,
+      })
+      cumulativeMs += (group.totalDurationMs ?? 0)
+      tick()
+    }
+
+    chapters.push({
+      order:      i + 1,
+      title:      project.title,
+      startMs:    chapterStartMs,
+      endMs:      cumulativeMs,
+      durationMs: cumulativeMs - chapterStartMs,
+      paragraphs,
+    })
+  }
+
+  zip.file('book.json', JSON.stringify({
+    title: solution.title,
+    exportedAt: new Date().toISOString(),
+    totalDurationMs: cumulativeMs,
+    chapters,
+  }, null, 2))
+  tick()
+
+  const zipBlob = await zip.generateAsync({
+    type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
+  }, ({ percent }) => onProgress?.(Math.min(0.97 + (percent / 100) * 0.03, 1)))
+
+  triggerDownload(zipBlob, `${projectSlug(solution.title)}_book_export.zip`)
   onProgress?.(1)
 }

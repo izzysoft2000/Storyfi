@@ -183,6 +183,7 @@ export const useProjectStore = defineStore('project', () => {
       outputFolderHandle:           null,
       outputFolderName:             null,
       outputFolderPromptDismissed:  false,
+      solutionId:                   null,
     }
   }
 
