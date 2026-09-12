@@ -45,8 +45,12 @@
           :key="opt.value"
           class="sort-btn"
           :class="{ 'sort-btn--active': sortBy === opt.value }"
+          :title="opt.label"
           @click="setSortBy(opt.value)"
-        >{{ opt.label }}</button>
+        >
+          <span class="sort-btn__icon">{{ opt.icon }}</span>
+          <span class="sort-btn__label">{{ opt.label }}</span>
+        </button>
       </div>
     </div>
 
@@ -239,9 +243,9 @@ async function load() {
 
 const SORT_KEY = 'storyfi_library_sort'
 const sortOptions = [
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
-  { value: 'name',   label: 'Name' },
+  { value: 'newest', label: 'Newest', icon: '↓' },
+  { value: 'oldest', label: 'Oldest', icon: '↑' },
+  { value: 'name',   label: 'Name',   icon: 'Aa' },
 ]
 const sortBy = ref(localStorage.getItem(SORT_KEY) || 'newest')
 
@@ -738,6 +742,9 @@ function relativeDate(ts) {
 }
 
 .sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: none;
   border: none;
   padding: 6px 14px;
@@ -752,6 +759,19 @@ function relativeDate(ts) {
 .sort-btn--active {
   background: var(--color-accent);
   color: #fff;
+}
+
+.sort-btn__icon {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Icon-only sort buttons on narrow screens */
+@media (max-width: 600px) {
+  .sort-label { display: none; }
+  .sort-btn { padding: 7px 10px; }
+  .sort-btn__label { display: none; }
 }
 
 /* ─── Project Grid ───────────────────────────────────── */
