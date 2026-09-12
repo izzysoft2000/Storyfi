@@ -490,6 +490,10 @@ function relativeDate(ts) {
   position: relative;
 }
 
+@media (max-width: 600px) {
+  .library-header { padding: 14px 16px 12px; }
+}
+
 .app-version {
   font-size: 11px;
   font-family: var(--font-mono);
@@ -553,8 +557,9 @@ function relativeDate(ts) {
 
 .lib-theme-btn {
   position: absolute;
-  top: 8px;
+  top: 50%;
   right: 16px;
+  transform: translateY(-50%);
   background: var(--color-surface-soft);
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
@@ -1045,6 +1050,9 @@ function relativeDate(ts) {
 /* Hide header action buttons on mobile — Import lives in EditorView bottom bar */
 @media (max-width: 600px) {
   .actions--desktop-only { display: none; }
+  .app-title  { font-size: 1.7rem; }
+  .title-row  { gap: 10px; }
+  .app-version { font-size: 10px; padding: 2px 8px; }
 }
 
 /* ─── + New Project card ─────────────────────────────── */
