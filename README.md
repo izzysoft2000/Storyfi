@@ -214,3 +214,5 @@ storyfi/
 - Google Drive integration (requires Worker for OAuth token exchange)
 - SRT/VTT subtitle export
 - `book.json` (Compile Book) has no sentence-level text/timing yet — only paragraph-group level, since raw Project records don't store sentence text
+- Solution export as `.epub`/eBook — text-only (chapters from each Project's content), no audio; would reuse `jszip` and need a headless ProseMirror/Tiptap serializer (schema + `DOMSerializer`, no mounted editor) to turn stored `editorState` into chapter HTML
+- One-click "Tag entire Project as Narrator" — convenience action for plain-prose Markdown imports with no `[LABEL]` markers, so a user can listen to a whole chapter single-voice (PocketFM-style) without manually selecting all text and tagging it themselves
