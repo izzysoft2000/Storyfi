@@ -5,6 +5,7 @@
       <div class="brand-group">
         <div class="title-row">
           <h1 class="app-title">Storyfi</h1>
+          <button class="app-version" @click="showBuildInfo = true">v{{ appVersion }}</button>
           <button
             v-if="canInstallChrome"
             class="install-pill"
@@ -13,12 +14,11 @@
         </div>
         <p class="app-subtitle">MULTI-VOICE AUDIO PRODUCTION</p>
       </div>
-      <button class="app-version" @click="showBuildInfo = true">v2.2</button>
 
       <!-- Build info dialog -->
       <div v-if="showBuildInfo" class="build-dialog-backdrop" @click.self="showBuildInfo = false">
         <div class="build-dialog">
-          <p class="build-dialog-title">Storyfi v2.2</p>
+          <p class="build-dialog-title">Storyfi v{{ appVersion }}</p>
           <p class="build-dialog-date">Built {{ buildDateDisplay }}</p>
           <button class="build-dialog-close" @click="showBuildInfo = false">OK</button>
         </div>
@@ -284,6 +284,7 @@ onMounted(async () => {
 const canInstallChrome  = ref(false)
 
 const showBuildInfo = ref(false)
+const appVersion = __APP_VERSION__ // injected at build time from package.json (see vite.config.js)
 const buildDateDisplay = computed(() => {
   try {
     return new Date(__BUILD_DATE__).toLocaleString(undefined, {
@@ -490,20 +491,20 @@ function relativeDate(ts) {
 }
 
 .app-version {
-  position: absolute;
-  top: 10px;
-  right: 16px;
-  font-size: 10px;
+  font-size: 11px;
   font-family: var(--font-mono);
   color: var(--color-text-muted);
-  opacity: 0.35;
   letter-spacing: 0.05em;
-  background: none;
-  border: none;
-  padding: 4px;
+  background: var(--color-surface-soft, transparent);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 3px 10px;
   cursor: pointer;
+  align-self: center;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s;
 }
-.app-version:hover { opacity: 0.65; }
+.app-version:hover { opacity: 1; color: var(--color-text); }
 
 .build-dialog-backdrop {
   position: fixed;
@@ -553,7 +554,7 @@ function relativeDate(ts) {
 .lib-theme-btn {
   position: absolute;
   top: 8px;
-  right: 46px;
+  right: 16px;
   background: var(--color-surface-soft);
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
