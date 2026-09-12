@@ -1,10 +1,4 @@
 <template>
-  <!-- Update Notification -->
-  <div v-if="needRefresh" class="update-banner">
-    <span>A new version of Storyfi is available.</span>
-    <button @click="updateServiceWorker()">Update Now</button>
-  </div>
-
   <LibraryView
   v-if="view === 'library'"
   :can-install="!!installEvent"
@@ -16,7 +10,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import LibraryView from '@/views/LibraryView.vue'
 import EditorView  from '@/views/EditorView.vue'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
@@ -28,12 +22,13 @@ const view            = ref('library')
 const activeProjectId = ref(null)
 
 // --- 1. Service Worker Update Logic ---
+// Auto-apply new builds as soon as they're detected — the app autosaves
+// every 2s (see §12), so there's nothing to lose by reloading silently
+// rather than waiting on a banner click.
 const { needRefresh, updateServiceWorker } = useRegisterSW()
-
-function handleUpdate() {
-  // You can trigger this from a toast or banner
-  updateServiceWorker()
-}
+watch(needRefresh, (val) => {
+  if (val) updateServiceWorker(true)
+})
 
 // --- 2. PWA Install Logic ---
 const installEvent = ref(null)
@@ -173,16 +168,6 @@ html, body {
   color: var(--color-text);
 }
 
-.update-banner {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  background: var(--color-accent);
-  color: white;
-  padding: 10px;
-  text-align: center;
-  z-index: 9999;
-  display: flex; gap: 20px; justify-content: center; align-items: center;
-}
 .install-btn {
   position: fixed;
   bottom: 20px; right: 20px;
