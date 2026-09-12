@@ -24,6 +24,7 @@
       <div class="toolbar__left">
         <span class="toolbar__count">Projects <span class="toolbar__count-num">({{ memberProjects.length }})</span></span>
         <button class="toolbar__add-btn" title="New Project" @click="createProject">+</button>
+        <button class="toolbar__add-existing-btn" title="Add Existing Project" @click="openAddExisting">📎</button>
       </div>
       <div class="toolbar__right">
         <button
@@ -122,6 +123,33 @@
       </Transition>
     </Teleport>
 
+    <!-- Add Existing Project picker -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="addExistingModal" class="modal-backdrop" @click.self="addExistingModal = false">
+          <div class="modal">
+            <h3 class="modal__title">Add Existing Project</h3>
+            <p class="modal__hint">Add a standalone Project into "{{ solution?.title }}".</p>
+            <div v-if="standaloneProjects.length > 0" class="solution-picker-list">
+              <button
+                v-for="p in standaloneProjects"
+                :key="p.id"
+                class="solution-picker-row"
+                @click="attachExistingProject(p)"
+              >
+                <span>{{ p.title }}</span>
+                <span class="solution-picker-row__count">{{ relativeDate(p.updatedAt) }}</span>
+              </button>
+            </div>
+            <p v-else class="modal__hint">No standalone Projects available to add.</p>
+            <div class="modal__actions">
+              <button class="btn btn--ghost" @click="addExistingModal = false">Close</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Rename Solution Modal -->
     <Teleport to="body">
       <Transition name="modal">
@@ -170,6 +198,7 @@ import {
 import { useProjectStore } from '@/store/project.js'
 import { useTheme } from '@/composables/usePanelLayout.js'
 import { compileSolution } from '@/export/exporter.js'
+import { relativeDate } from '@/utils/relativeDate.js'
 
 const props = defineProps({
   solutionId: { type: String, required: true },
@@ -202,6 +231,8 @@ watch(() => props.solutionId, load)
 const memberProjects = computed(() =>
   allProjects.value.filter(p => p.solutionId === props.solutionId)
 )
+
+const standaloneProjects = computed(() => allProjects.value.filter(p => !p.solutionId))
 
 // Member projects in the Solution's canonical Book Order — used for Compile
 // regardless of whichever sort the user currently has the grid set to.
@@ -278,6 +309,26 @@ async function confirmNewProject() {
   await saveSolution(solution.value)
 
   emit('open-project', p.id)
+}
+
+// ─── Add Existing Project ────────────────────────────────────────────────────
+
+const addExistingModal = ref(false)
+
+function openAddExisting() {
+  addExistingModal.value = true
+}
+
+async function attachExistingProject(p) {
+  addExistingModal.value = false
+  p.solutionId = solution.value.id
+  await saveProject(p)
+
+  solution.value.projectOrder = [...(solution.value.projectOrder ?? []), p.id]
+  await saveSolution(solution.value)
+
+  toastRef.value.show(`Added "${p.title}" to "${solution.value.title}"`, 'success')
+  await load()
 }
 
 // ─── Rename Solution ─────────────────────────────────────────────────────────
@@ -538,6 +589,64 @@ async function doCompile() {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #fff;
+}
+
+.toolbar__add-existing-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.toolbar__add-existing-btn:hover {
+  background: var(--color-surface-soft);
+  border-color: var(--color-accent);
+}
+
+.modal__hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: -8px 0 0;
+  line-height: 1.5;
+}
+
+.solution-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.solution-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: var(--font-ui);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  text-align: left;
+}
+.solution-picker-row:hover { border-color: var(--color-accent) }
+
+.solution-picker-row__count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-muted);
 }
 
 .compile-btn {
