@@ -12,7 +12,12 @@
   @go-library="navigateLibrary"
   @open-project="navigateTo"
   />
-  <EditorView v-else-if="view === 'editor'" :project-id="activeProjectId" @go-library="navigateLibrary" />
+  <EditorView
+  v-else-if="view === 'editor'"
+  :project-id="activeProjectId"
+  @go-library="navigateLibrary"
+  @go-solution="navigateToSolution"
+  />
 
 </template>
 

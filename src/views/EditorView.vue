@@ -9,6 +9,12 @@
     <!-- Top bar: back | title | settings -->
     <header class="m-toolbar">
       <button class="m-tb-btn" @click="goLibrary">←</button>
+      <button
+        v-if="parentSolution"
+        class="m-tb-btn"
+        :title="`Back to ${parentSolution.title}`"
+        @click="$emit('go-solution', parentSolution.id)"
+      >📚</button>
       <div v-if="!editingTitle" class="m-title" @click="startEditTitle">
         {{ store.projectTitle }}
       </div>
@@ -192,6 +198,14 @@
           ← Library
         </button>
         <div class="wst-divider" />
+        <template v-if="parentSolution">
+          <button
+            class="wst-btn wst-btn--ghost"
+            :title="`Back to ${parentSolution.title}`"
+            @click="$emit('go-solution', parentSolution.id)"
+          >📚 {{ parentSolution.title }}</button>
+          <span class="wst-breadcrumb-sep">›</span>
+        </template>
         <div v-if="!editingTitle" class="wst-title" title="Click to rename" @click="startEditTitle">
           {{ store.projectTitle }}
         </div>
@@ -422,7 +436,7 @@ import SyncWarningModal  from '@/modals/SyncWarningModal.vue'
 import ExportModal       from '@/modals/ExportModal.vue'
 
 // ─── Store + data ────────────────────────────────────────────────────────────
-import { getSetting }         from '@/store/db.js'
+import { getSetting, getSolution } from '@/store/db.js'
 import { syncCheckOnOpen }    from '@/storage/synccheck.js'
 import { extractTaggedSpans } from '@/editor/splitter.js'
 
@@ -435,7 +449,10 @@ const PANEL_META = { cast: 'Voice Cast', playlist: 'Playlist', editor: 'Editor' 
 
 // ─── Props & emits ────────────────────────────────────────────────────────────
 const props = defineProps({ projectId: String })
-const emit  = defineEmits(['go-library'])
+const emit  = defineEmits(['go-library', 'go-solution'])
+
+// Breadcrumb — set when the open Project belongs to a Solution
+const parentSolution = ref(null)
 
 // ─── Core stores / composables ────────────────────────────────────────────────
 const store    = useProjectStore()
@@ -740,6 +757,10 @@ onMounted(async () => {
   await store.loadProject(props.projectId)
   if (!store.project) { emit('go-library'); return }
 
+  parentSolution.value = store.project.solutionId
+    ? await getSolution(store.project.solutionId)
+    : null
+
   const saved = await getSetting('activeProvider')
   if (saved) activeProvider.value = saved
 
@@ -1014,6 +1035,13 @@ function goLibrary() { emit('go-library') }
 .wst-btn.active,
 .wst-btn--fmt.active { background: rgba(255,142,110,0.18); border-color: var(--color-accent); color: var(--color-accent) }
 .wst-btn--ghost { color: var(--color-text-muted) }
+
+.wst-breadcrumb-sep {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin: 0 2px;
+  flex-shrink: 0;
+}
 
 .wst-title {
   font-family: var(--font-display); font-size: 14px; font-weight: 600;

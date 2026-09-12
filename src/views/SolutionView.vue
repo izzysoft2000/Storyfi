@@ -199,6 +199,7 @@ import { useProjectStore } from '@/store/project.js'
 import { useTheme } from '@/composables/usePanelLayout.js'
 import { compileSolution } from '@/export/exporter.js'
 import { relativeDate } from '@/utils/relativeDate.js'
+import { nextDefaultName } from '@/utils/defaultName.js'
 
 const props = defineProps({
   solutionId: { type: String, required: true },
@@ -291,9 +292,9 @@ const newProjectTitle = ref('')
 const newTitleInput   = ref(null)
 
 function createProject() {
-  newProjectTitle.value = ''
+  newProjectTitle.value = nextDefaultName('Project', memberProjects.value.map(p => p.title))
   newProjectModal.value = true
-  nextTick(() => newTitleInput.value?.focus())
+  nextTick(() => { newTitleInput.value?.focus(); newTitleInput.value?.select() })
 }
 
 async function confirmNewProject() {

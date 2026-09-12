@@ -278,6 +278,7 @@ import { useProjectStore } from '@/store/project.js'
 import { useTheme } from '@/composables/usePanelLayout.js'
 import { relativeDate } from '@/utils/relativeDate.js'
 import { uuid } from '@/utils/uuid.js'
+import { nextDefaultName } from '@/utils/defaultName.js'
 
 const emit = defineEmits(['open-project', 'open-solution', 'install'])
 
@@ -323,7 +324,7 @@ async function load() {
 // ─── Tabs (Projects / Solutions) ──────────────────────────────────────────────
 
 const TAB_KEY   = 'storyfi_library_tab'
-const activeTab = ref(localStorage.getItem(TAB_KEY) || 'projects')
+const activeTab = ref(localStorage.getItem(TAB_KEY) || 'solutions')
 
 function setActiveTab(tab) {
   activeTab.value = tab
@@ -446,9 +447,9 @@ function dismissInstallHint() {
 function createProject() {
   createKind.value = 'project'
   pendingMdContent.value = null
-  newProjectTitle.value  = ''
+  newProjectTitle.value  = nextDefaultName('Project', standaloneProjects.value.map(p => p.title))
   newProjectModal.value  = true
-  nextTick(() => newTitleInput.value?.focus())
+  nextTick(() => { newTitleInput.value?.focus(); newTitleInput.value?.select() })
 }
 
 async function confirmNewProject() {
@@ -492,9 +493,9 @@ async function confirmNewProject() {
 
 function createSolution() {
   createKind.value = 'solution'
-  newProjectTitle.value = ''
+  newProjectTitle.value = nextDefaultName('Solution', solutions.value.map(s => s.title))
   newProjectModal.value = true
-  nextTick(() => newTitleInput.value?.focus())
+  nextTick(() => { newTitleInput.value?.focus(); newTitleInput.value?.select() })
 }
 
 function openSolution(id) {
@@ -527,9 +528,9 @@ function assignExistingSolution(solution) {
 function createSolutionAndAssign() {
   addToSolutionModal.value = false
   createKind.value = 'solution-assign'
-  newProjectTitle.value = ''
+  newProjectTitle.value = nextDefaultName('Solution', solutions.value.map(s => s.title))
   newProjectModal.value = true
-  nextTick(() => newTitleInput.value?.focus())
+  nextTick(() => { newTitleInput.value?.focus(); newTitleInput.value?.select() })
 }
 
 async function deleteSolutionConfirm(s) {
