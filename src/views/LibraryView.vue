@@ -32,28 +32,13 @@
       </button>
     </header>
 
-    <!-- Toolbar — stays fixed above the scrolling project grid -->
+    <!-- Toolbar — stays fixed above the scrolling solution grid -->
     <div v-if="!loading" class="library__toolbar">
       <div class="toolbar__left">
-        <div class="tab-switch">
-          <button
-            class="tab-btn"
-            :class="{ 'tab-btn--active': activeTab === 'projects' }"
-            @click="setActiveTab('projects')"
-          >Projects <span class="tab-btn__count">{{ standaloneProjects.length }}</span></button>
-          <button
-            class="tab-btn"
-            :class="{ 'tab-btn--active': activeTab === 'solutions' }"
-            @click="setActiveTab('solutions')"
-          >Solutions <span class="tab-btn__count">{{ solutions.length }}</span></button>
-        </div>
-        <button
-          class="toolbar__add-btn"
-          :title="activeTab === 'projects' ? 'New Project' : 'New Solution'"
-          @click="activeTab === 'projects' ? createProject() : createSolution()"
-        >+</button>
+        <span class="toolbar__count">Solutions <span class="toolbar__count-num">({{ solutions.length }})</span></span>
+        <button class="toolbar__add-btn" title="New Solution" @click="createSolution">+</button>
       </div>
-      <div v-if="activeListCount > 0" class="sort-control">
+      <div v-if="solutions.length > 0" class="sort-control">
         <span class="sort-label">Sort</span>
         <button
           v-for="opt in sortOptions"
@@ -69,104 +54,72 @@
       </div>
     </div>
 
-    <!-- Project / Solution Grid -->
+    <!-- Solution Grid -->
     <main class="library__main">
       <div v-if="loading" class="library__empty">
         <span class="library__empty-icon">⟳</span>
         <p>Loading…</p>
       </div>
 
-      <template v-else-if="activeTab === 'projects'">
-        <div v-if="standaloneProjects.length === 0" class="library__empty">
-          <span class="library__empty-icon">✦</span>
-          <p class="library__empty-title">No projects yet</p>
-          <p class="library__empty-sub">Import a Markdown file or start a new project to begin.</p>
-          <button class="action-btn action-btn--primary" style="margin-top:20px" @click="createProject">
-            + New Project
-          </button>
-        </div>
+      <div v-else-if="solutions.length === 0" class="library__empty">
+        <span class="library__empty-icon">📚</span>
+        <p class="library__empty-title">No solutions yet</p>
+        <p class="library__empty-sub">A Solution groups related Projects — like chapters of a book.</p>
+        <button class="action-btn action-btn--primary" style="margin-top:20px" @click="createSolution">
+          + New Solution
+        </button>
+      </div>
 
-        <div v-else class="project-grid">
-          <ProjectCard
-            v-for="p in sortedStandaloneProjects"
-            :key="p.id"
-            :project="p"
-            show-add-to-solution
-            @open="openProject(p.id)"
-            @clear-audio="clearAudio(p)"
-            @delete="deleteProjectConfirm(p)"
-            @add-to-solution="openAddToSolution(p)"
-          />
-
-          <!-- + New Project card — always last in the grid -->
-          <div class="project-card project-card--new" @click="createProject">
-            <span class="new-card__icon">+</span>
-            <span class="new-card__label">New Project</span>
-          </div>
-        </div>
-      </template>
-
-      <template v-else>
-        <div v-if="solutions.length === 0" class="library__empty">
-          <span class="library__empty-icon">📚</span>
-          <p class="library__empty-title">No solutions yet</p>
-          <p class="library__empty-sub">Group related Projects — like chapters of a book — into a Solution.</p>
-          <button class="action-btn action-btn--primary" style="margin-top:20px" @click="createSolution">
-            + New Solution
-          </button>
-        </div>
-
-        <div v-else class="project-grid">
-          <div
-            v-for="s in sortedSolutions"
-            :key="s.id"
-            class="project-card"
-            @click="openSolution(s.id)"
-          >
-            <div class="project-card__thumb solution-card__thumb">
-              <span class="solution-card__icon">📚</span>
-              <div class="project-card__menu" @click.stop>
-                <button class="icon-btn icon-btn--danger" title="Delete solution" @click="deleteSolutionConfirm(s)">✕</button>
-              </div>
-            </div>
-
-            <div class="project-card__body">
-              <div class="project-card__avatars">
-                <span
-                  v-for="role in solutionCast(s).slice(0, 5)"
-                  :key="role.id"
-                  class="cast-avatar"
-                  :style="{ background: role.color }"
-                  :title="role.label"
-                >{{ (role.label || '?')[0].toUpperCase() }}</span>
-              </div>
-
-              <h2 class="project-card__title">{{ s.title }}</h2>
-
-              <div class="project-card__meta">
-                <span class="meta-chip">
-                  {{ (s.projectOrder ?? []).length }} project{{ (s.projectOrder ?? []).length === 1 ? '' : 's' }}
-                </span>
-                <span v-if="solutionAudioBytes(s) > 0" class="meta-chip meta-chip--audio">
-                  {{ formatBytes(solutionAudioBytes(s)) }} audio
-                </span>
-                <span v-else class="meta-chip meta-chip--muted">No audio yet</span>
-              </div>
-
-              <div class="project-card__footer">
-                <span class="project-card__date">{{ relativeDate(s.updatedAt) }}</span>
-                <button class="open-btn" @click.stop="openSolution(s.id)">Open →</button>
-              </div>
+      <div v-else class="project-grid">
+        <div
+          v-for="s in sortedSolutions"
+          :key="s.id"
+          class="project-card"
+          @click="openSolution(s.id)"
+        >
+          <div class="project-card__thumb solution-card__thumb">
+            <span class="solution-card__icon">📚</span>
+            <div class="project-card__menu" @click.stop>
+              <button class="icon-btn icon-btn--danger" title="Delete solution" @click="deleteSolutionConfirm(s)">✕</button>
             </div>
           </div>
 
-          <!-- + New Solution card — always last in the grid -->
-          <div class="project-card project-card--new" @click="createSolution">
-            <span class="new-card__icon">+</span>
-            <span class="new-card__label">New Solution</span>
+          <div class="project-card__body">
+            <div class="project-card__avatars">
+              <span
+                v-for="role in solutionCast(s).slice(0, 5)"
+                :key="role.id"
+                class="cast-avatar"
+                :style="{ background: role.color }"
+                :title="role.label"
+              >{{ (role.label || '?')[0].toUpperCase() }}</span>
+            </div>
+
+            <h2 class="project-card__title">{{ s.title }}</h2>
+
+            <div class="project-card__meta">
+              <span class="meta-chip">
+                {{ (s.projectOrder ?? []).length }} project{{ (s.projectOrder ?? []).length === 1 ? '' : 's' }}
+              </span>
+              <span v-if="solutionAudioBytes(s) > 0" class="meta-chip meta-chip--audio">
+                {{ formatBytes(solutionAudioBytes(s)) }} audio
+              </span>
+              <span v-else class="meta-chip meta-chip--muted">No audio yet</span>
+            </div>
+
+            <div class="project-card__footer">
+              <span class="project-card__date">{{ relativeDate(s.updatedAt) }}</span>
+              <button class="open-btn" @click.stop="openSolution(s.id)">Open →</button>
+            </div>
           </div>
         </div>
-      </template>
+
+        <!-- + New Solution card — always last in the grid -->
+        <div class="project-card project-card--new" @click="createSolution">
+          <span class="new-card__icon">+</span>
+          <span class="new-card__label">New Solution</span>
+        </div>
+      </div>
     </main>
 
     <!-- Storage Bar Footer -->
@@ -175,26 +128,17 @@
     </footer>
     <div class="library__safe-bottom" />
 
-    <!-- Hidden MD file input -->
-    <input
-      ref="mdInput"
-      type="file"
-      accept=".md,.markdown,text/markdown"
-      style="display:none"
-      @change="onMdFileSelected"
-    />
-
-    <!-- New Project / New Solution Modal (shared) -->
+    <!-- New Solution Modal -->
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="newProjectModal" class="modal-backdrop" @click.self="newProjectModal = false">
           <div class="modal">
-            <h3 class="modal__title">{{ createKind === 'project' ? 'New Project' : 'New Solution' }}</h3>
+            <h3 class="modal__title">New Solution</h3>
             <input
               ref="newTitleInput"
               v-model="newProjectTitle"
               class="modal__input"
-              :placeholder="createKind === 'project' ? 'Project title…' : 'Solution title…'"
+              placeholder="Solution title…"
               maxlength="80"
               @keydown.enter="confirmNewProject"
               @keydown.esc="newProjectModal = false"
@@ -206,34 +150,6 @@
                 :disabled="!newProjectTitle.trim()"
                 @click="confirmNewProject"
               >Create</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
-    <!-- Add to Solution picker -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="addToSolutionModal" class="modal-backdrop" @click.self="addToSolutionModal = false">
-          <div class="modal">
-            <h3 class="modal__title">Add to Solution</h3>
-            <p class="modal__hint">Add "{{ addToSolutionTarget?.title }}" to a Solution.</p>
-            <div v-if="solutions.length > 0" class="solution-picker-list">
-              <button
-                v-for="s in solutions"
-                :key="s.id"
-                class="solution-picker-row"
-                @click="assignExistingSolution(s)"
-              >
-                <span>{{ s.title }}</span>
-                <span class="solution-picker-row__count">{{ (s.projectOrder ?? []).length }}</span>
-              </button>
-            </div>
-            <p v-else class="modal__hint">You don't have any Solutions yet.</p>
-            <div class="modal__actions">
-              <button class="btn btn--ghost" @click="addToSolutionModal = false">Cancel</button>
-              <button class="btn btn--accent" @click="createSolutionAndAssign">+ New Solution</button>
             </div>
           </div>
         </div>
@@ -267,22 +183,18 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import StorageBar   from '@/components/StorageBar.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import Toast        from '@/components/Toast.vue'
-import ProjectCard  from '@/components/ProjectCard.vue'
 import {
-  getAllProjects, saveProject, deleteProjectFull, clearProjectAudio,
-  getAllSolutions, saveSolution, deleteSolutionFull,
+  getAllProjects, getAllSolutions, saveSolution, deleteSolutionFull,
 } from '@/store/db.js'
 import { formatBytes } from '@/storage/quota.js'
 import { requestPersistentStorage, isPersistent } from '@/storage/quota.js'
-import { useProjectStore } from '@/store/project.js'
 import { useTheme } from '@/composables/usePanelLayout.js'
 import { relativeDate } from '@/utils/relativeDate.js'
 import { uuid } from '@/utils/uuid.js'
 import { nextDefaultName } from '@/utils/defaultName.js'
 
-const emit = defineEmits(['open-project', 'open-solution', 'install'])
+const emit = defineEmits(['open-solution', 'install'])
 
-const store          = useProjectStore()
 const { isDark, toggleTheme } = useTheme()
 const projects       = ref([])
 const solutions      = ref([])
@@ -290,20 +202,11 @@ const loading        = ref(true)
 const storageBarRef  = ref(null)
 const confirmRef     = ref(null)
 const toastRef       = ref(null)
-const mdInput        = ref(null)
 
-// New Project / New Solution modal (shared) — createKind decides what
-// confirmNewProject() actually does: 'project', 'solution', or
-// 'solution-assign' (create a Solution and immediately add a Project to it)
+// New Solution modal
 const newProjectModal  = ref(false)
 const newProjectTitle  = ref('')
 const newTitleInput    = ref(null)
-const pendingMdContent = ref(null) // set when creating from .md import
-const createKind       = ref('project')
-
-// Add-to-Solution picker modal
-const addToSolutionModal  = ref(false)
-const addToSolutionTarget = ref(null)
 
 const props = defineProps({
   // canInstall was removed — Chrome install is now handled via
@@ -320,23 +223,6 @@ async function load() {
     loading.value = false
   }
 }
-
-// ─── Tabs (Projects / Solutions) ──────────────────────────────────────────────
-
-const TAB_KEY   = 'storyfi_library_tab'
-const activeTab = ref(localStorage.getItem(TAB_KEY) || 'solutions')
-
-function setActiveTab(tab) {
-  activeTab.value = tab
-  localStorage.setItem(TAB_KEY, tab)
-}
-
-// Projects already grouped into a Solution live only in their Solution's view
-const standaloneProjects = computed(() => projects.value.filter(p => !p.solutionId))
-
-const activeListCount = computed(() =>
-  activeTab.value === 'projects' ? standaloneProjects.value.length : solutions.value.length
-)
 
 // ─── Sorting ─────────────────────────────────────────────────────────────────
 
@@ -366,8 +252,7 @@ function sortByCurrent(list) {
   }
 }
 
-const sortedStandaloneProjects = computed(() => sortByCurrent(standaloneProjects.value))
-const sortedSolutions          = computed(() => sortByCurrent(solutions.value))
+const sortedSolutions = computed(() => sortByCurrent(solutions.value))
 
 onMounted(async () => {
   await load()
@@ -442,13 +327,11 @@ function dismissInstallHint() {
   localStorage.setItem(INSTALL_DISMISSED_KEY, '1')
 }
 
-// ─── Create Project ──────────────────────────────────────────────────────────
+// ─── Solutions ───────────────────────────────────────────────────────────────
 
-function createProject() {
-  createKind.value = 'project'
-  pendingMdContent.value = null
-  newProjectTitle.value  = nextDefaultName('Project', standaloneProjects.value.map(p => p.title))
-  newProjectModal.value  = true
+function createSolution() {
+  newProjectTitle.value = nextDefaultName('Solution', solutions.value.map(s => s.title))
+  newProjectModal.value = true
   nextTick(() => { newTitleInput.value?.focus(); newTitleInput.value?.select() })
 }
 
@@ -457,87 +340,26 @@ async function confirmNewProject() {
   if (!title) return
   newProjectModal.value = false
 
-  if (createKind.value === 'solution' || createKind.value === 'solution-assign') {
-    const s = {
-      id: uuid(), title, projectOrder: [],
-      createdAt: Date.now(), updatedAt: Date.now(),
-    }
-    await saveSolution(s)
-
-    if (createKind.value === 'solution-assign' && addToSolutionTarget.value) {
-      await addProjectToSolution(addToSolutionTarget.value, s)
-      addToSolutionTarget.value = null
-      return
-    }
-
-    await load()
-    openSolution(s.id)
-    return
+  const s = {
+    id: uuid(), title, projectOrder: [],
+    createdAt: Date.now(), updatedAt: Date.now(),
   }
-
-  const p = store.createBlankProject(title)
-  if (pendingMdContent.value) {
-    p.sourceMarkdown = pendingMdContent.value
-    pendingMdContent.value = null
-  }
-
-  await saveProject(p)
+  await saveSolution(s)
   await load()
-  storageBarRef.value?.refresh()
-
-  // Navigate to editor
-  emit('open-project', p.id)
-}
-
-// ─── Solutions ───────────────────────────────────────────────────────────────
-
-function createSolution() {
-  createKind.value = 'solution'
-  newProjectTitle.value = nextDefaultName('Solution', solutions.value.map(s => s.title))
-  newProjectModal.value = true
-  nextTick(() => { newTitleInput.value?.focus(); newTitleInput.value?.select() })
+  openSolution(s.id)
 }
 
 function openSolution(id) {
   emit('open-solution', id)
 }
 
-async function addProjectToSolution(project, solution) {
-  project.solutionId = solution.id
-  await saveProject(project)
-
-  if (!(solution.projectOrder ?? []).includes(project.id)) {
-    solution.projectOrder = [...(solution.projectOrder ?? []), project.id]
-    await saveSolution(solution)
-  }
-
-  await load()
-  toastRef.value.show(`Added "${project.title}" to "${solution.title}"`, 'success')
-}
-
-function openAddToSolution(p) {
-  addToSolutionTarget.value = p
-  addToSolutionModal.value  = true
-}
-
-function assignExistingSolution(solution) {
-  addToSolutionModal.value = false
-  addProjectToSolution(addToSolutionTarget.value, solution)
-}
-
-function createSolutionAndAssign() {
-  addToSolutionModal.value = false
-  createKind.value = 'solution-assign'
-  newProjectTitle.value = nextDefaultName('Solution', solutions.value.map(s => s.title))
-  newProjectModal.value = true
-  nextTick(() => { newTitleInput.value?.focus(); newTitleInput.value?.select() })
-}
-
 async function deleteSolutionConfirm(s) {
   const count = (s.projectOrder ?? []).length
   const ok = await confirmRef.value.open({
     title:        'Delete solution?',
-    message:      `"${s.title}" will be deleted. Its ${count} project${count === 1 ? '' : 's'} will NOT be deleted — they'll return to your standalone Projects list.`,
+    message:      count > 0
+      ? `"${s.title}" and its ${count} project${count === 1 ? '' : 's'} will be permanently deleted, including all audio. This cannot be undone.`
+      : `"${s.title}" will be permanently deleted. This cannot be undone.`,
     confirmLabel: 'Delete',
     cancelLabel:  'Cancel',
     variant:      'danger',
@@ -547,6 +369,7 @@ async function deleteSolutionConfirm(s) {
   await deleteSolutionFull(s)
   toastRef.value.show(`"${s.title}" deleted`, 'info')
   await load()
+  storageBarRef.value?.refresh()
 }
 
 // Cast/audio rollups for a Solution card — computed across its member projects
@@ -567,69 +390,6 @@ function solutionCast(s) {
 
 function solutionAudioBytes(s) {
   return solutionProjects(s).reduce((sum, p) => sum + (p.audioSizeBytes || 0), 0)
-}
-
-// ─── Import .md ─────────────────────────────────────────────────────────────
-
-function importMd() {
-  mdInput.value.value = ''
-  mdInput.value.click()
-}
-
-function onMdFileSelected(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = ev => {
-    pendingMdContent.value = ev.target.result
-    // Pre-fill title from filename (strip extension)
-    newProjectTitle.value = file.name.replace(/\.(md|markdown)$/i, '')
-    newProjectModal.value = true
-    nextTick(() => newTitleInput.value?.focus())
-  }
-  reader.readAsText(file)
-}
-
-// ─── Open Project ────────────────────────────────────────────────────────────
-
-function openProject(id) {
-  emit('open-project', id)
-}
-
-// ─── Clear Audio ─────────────────────────────────────────────────────────────
-
-async function clearAudio(p) {
-  const ok = await confirmRef.value.open({
-    title:        'Clear audio?',
-    message:      `This will remove all generated audio for "${p.title}". Your script, tags, and voice assignments are kept. You can re-generate at any time.`,
-    confirmLabel: 'Clear Audio',
-    cancelLabel:  'Cancel',
-    variant:      'danger',
-  })
-  if (!ok) return
-
-  await clearProjectAudio(p)
-  toastRef.value.show(`Audio cleared for "${p.title}"`, 'success')
-  await load()
-  storageBarRef.value?.refresh()
-}
-
-// ─── Delete Project ──────────────────────────────────────────────────────────
-
-async function deleteProjectConfirm(p) {
-  const ok = await confirmRef.value.open({
-    title:        'Delete project?',
-    message:      `"${p.title}" and all its audio will be permanently deleted. This cannot be undone.`,
-    confirmLabel: 'Delete',
-    cancelLabel:  'Cancel',
-    variant:      'danger',
-  })
-  if (!ok) return
-
-  await deleteProjectFull(p)
-  toastRef.value.show(`"${p.title}" deleted`, 'info')
-  await load()
-  storageBarRef.value?.refresh()
 }
 
 </script>
@@ -873,41 +633,15 @@ async function deleteProjectConfirm(p) {
   gap: 10px;
 }
 
-.tab-switch {
-  display: flex;
-  gap: 2px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 2px;
-}
-
-.tab-btn {
-  background: none;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
+.toolbar__count {
   font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+.toolbar__count-num {
   color: var(--color-text-muted);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.tab-btn:hover { color: var(--color-text) }
-.tab-btn--active {
-  background: var(--color-accent);
-  color: #fff;
-}
-.tab-btn__count {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  opacity: 0.75;
-  margin-left: 3px;
-}
-
-@media (max-width: 600px) {
-  .tab-btn { padding: 6px 10px; font-size: 12px; }
+  font-weight: 400;
 }
 
 .toolbar__add-btn {
@@ -1193,45 +927,6 @@ async function deleteProjectConfirm(p) {
 }
 .modal__input:focus { border-color: var(--color-accent) }
 .modal__input::placeholder { color: var(--color-text-muted) }
-
-.modal__hint {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  margin: -8px 0 0;
-  line-height: 1.5;
-}
-
-.solution-picker-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.solution-picker-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 14px;
-  font-family: var(--font-ui);
-  color: var(--color-text);
-  cursor: pointer;
-  transition: border-color 0.15s;
-  text-align: left;
-}
-.solution-picker-row:hover { border-color: var(--color-accent) }
-
-.solution-picker-row__count {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-text-muted);
-}
 
 .modal__actions {
   display: flex;

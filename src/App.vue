@@ -2,7 +2,6 @@
   <LibraryView
   v-if="view === 'library'"
   :can-install="!!installEvent"
-  @open-project="navigateTo"
   @open-solution="navigateToSolution"
   @install="triggerInstall"
   />

@@ -8,13 +8,11 @@
 
     <!-- Top bar: back | title | settings -->
     <header class="m-toolbar">
-      <button class="m-tb-btn" @click="goLibrary">←</button>
       <button
-        v-if="parentSolution"
         class="m-tb-btn"
-        :title="`Back to ${parentSolution.title}`"
-        @click="$emit('go-solution', parentSolution.id)"
-      >📚</button>
+        :title="parentSolution ? `Back to ${parentSolution.title}` : 'Back to Library'"
+        @click="goBack"
+      >←</button>
       <div v-if="!editingTitle" class="m-title" @click="startEditTitle">
         {{ store.projectTitle }}
       </div>
@@ -194,18 +192,12 @@
 
       <!-- Left: nav + title -->
       <div class="wst-group">
-        <button class="wst-btn wst-btn--ghost" title="Back to Library" @click="goLibrary">
-          ← Library
-        </button>
+        <button
+          class="wst-btn wst-btn--ghost"
+          :title="parentSolution ? `Back to ${parentSolution.title}` : 'Back to Library'"
+          @click="goBack"
+        >← {{ parentSolution ? `📚 ${parentSolution.title}` : 'Library' }}</button>
         <div class="wst-divider" />
-        <template v-if="parentSolution">
-          <button
-            class="wst-btn wst-btn--ghost"
-            :title="`Back to ${parentSolution.title}`"
-            @click="$emit('go-solution', parentSolution.id)"
-          >📚 {{ parentSolution.title }}</button>
-          <span class="wst-breadcrumb-sep">›</span>
-        </template>
         <div v-if="!editingTitle" class="wst-title" title="Click to rename" @click="startEditTitle">
           {{ store.projectTitle }}
         </div>
@@ -996,6 +988,14 @@ async function onRegenerateGroup(groupId) {
 function onExport() { exportModalRef.value?.open() }
 
 function goLibrary() { emit('go-library') }
+
+// Every Project lives inside a Solution now, so the toolbar's back control
+// goes straight there. Falls back to Library for legacy/orphaned projects
+// that have no parent Solution.
+function goBack() {
+  if (parentSolution.value) emit('go-solution', parentSolution.value.id)
+  else emit('go-library')
+}
 </script>
 
 <style scoped>
@@ -1035,13 +1035,6 @@ function goLibrary() { emit('go-library') }
 .wst-btn.active,
 .wst-btn--fmt.active { background: rgba(255,142,110,0.18); border-color: var(--color-accent); color: var(--color-accent) }
 .wst-btn--ghost { color: var(--color-text-muted) }
-
-.wst-breadcrumb-sep {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  margin: 0 2px;
-  flex-shrink: 0;
-}
 
 .wst-title {
   font-family: var(--font-display); font-size: 14px; font-weight: 600;

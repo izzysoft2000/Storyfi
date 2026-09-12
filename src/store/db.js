@@ -316,19 +316,35 @@ export async function saveSolution(solution) {
 }
 
 /**
- * Delete a Solution. Member projects are NOT deleted — they're unlinked
- * (solutionId reset to null) and reappear in the standalone Projects list.
+ * Delete a Solution AND every Project inside it, including all of their
+ * sentences and audio blobs. There's no standalone Projects view for
+ * member projects to fall back to, so unlinking them would just make
+ * them invisible — deleting the Solution deletes everything in it,
+ * like deleting a folder deletes its contents.
  */
 export async function deleteSolutionFull(solution) {
   const db = await getDB()
-  const tx = db.transaction(['solutions', 'projects'], 'readwrite')
+  const tx = db.transaction(
+    ['solutions', 'projects', 'sentences', 'audio_sentences', 'audio_stitched'],
+    'readwrite'
+  )
 
   const projectsStore = tx.objectStore('projects')
   for (const projectId of solution.projectOrder ?? []) {
     const project = await projectsStore.get(projectId)
-    if (project) {
-      await projectsStore.put({ ...project, solutionId: null })
+    if (!project) continue
+
+    const sentenceIds = (project.paragraphGroups ?? []).flatMap(g => g.sentenceIds ?? [])
+    const groupIds     = (project.paragraphGroups ?? []).map(g => g.id)
+
+    for (const sid of sentenceIds) {
+      await tx.objectStore('sentences').delete(sid)
+      await tx.objectStore('audio_sentences').delete(sid)
     }
+    for (const gid of groupIds) {
+      await tx.objectStore('audio_stitched').delete(gid)
+    }
+    await projectsStore.delete(projectId)
   }
 
   await tx.objectStore('solutions').delete(solution.id)

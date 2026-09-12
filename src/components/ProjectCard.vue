@@ -24,18 +24,6 @@
           :disabled="!canMoveDown"
           @click="$emit('move-down')"
         >↓</button>
-        <button
-          v-if="showAddToSolution"
-          class="icon-btn"
-          title="Add to Solution"
-          @click="$emit('add-to-solution')"
-        >📚</button>
-        <button
-          v-if="showUnlink"
-          class="icon-btn"
-          title="Remove from Solution"
-          @click="$emit('unlink')"
-        >⤴</button>
         <button class="icon-btn" title="Clear audio" @click="$emit('clear-audio')">⊘</button>
         <button class="icon-btn icon-btn--danger" title="Delete project" @click="$emit('delete')">✕</button>
       </div>
@@ -80,15 +68,13 @@ import { relativeDate } from '@/utils/relativeDate.js'
 import { pseudoWaveform } from '@/utils/waveform.js'
 
 const props = defineProps({
-  project:          { type: Object, required: true },
-  showAddToSolution: { type: Boolean, default: false },
-  showUnlink:        { type: Boolean, default: false },
-  showReorder:       { type: Boolean, default: false },
-  canMoveUp:         { type: Boolean, default: false },
-  canMoveDown:       { type: Boolean, default: false },
+  project:     { type: Object, required: true },
+  showReorder: { type: Boolean, default: false },
+  canMoveUp:   { type: Boolean, default: false },
+  canMoveDown: { type: Boolean, default: false },
 })
 
-defineEmits(['open', 'clear-audio', 'delete', 'add-to-solution', 'unlink', 'move-up', 'move-down'])
+defineEmits(['open', 'clear-audio', 'delete', 'move-up', 'move-down'])
 
 const waveform = computed(() => pseudoWaveform(props.project.id))
 </script>
