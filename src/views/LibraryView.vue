@@ -48,9 +48,22 @@
         </button>
       </div>
 
-      <div v-else class="project-grid">
+      <div v-if="projects.length > 0" class="library__toolbar">
+        <span class="sort-label">Sort</span>
+        <div class="sort-control">
+          <button
+            v-for="opt in sortOptions"
+            :key="opt.value"
+            class="sort-btn"
+            :class="{ 'sort-btn--active': sortBy === opt.value }"
+            @click="setSortBy(opt.value)"
+          >{{ opt.label }}</button>
+        </div>
+      </div>
+
+      <div v-if="projects.length > 0" class="project-grid">
         <div
-          v-for="p in projects"
+          v-for="p in sortedProjects"
           :key="p.id"
           class="project-card"
           @click="openProject(p.id)"
@@ -211,12 +224,39 @@ const props = defineProps({
 async function load() {
   loading.value = true
   try {
-    const all = await getAllProjects()
-    projects.value = all.sort((a, b) => b.updatedAt - a.updatedAt)
+    projects.value = await getAllProjects()
   } finally {
     loading.value = false
   }
 }
+
+// ─── Sorting ─────────────────────────────────────────────────────────────────
+
+const SORT_KEY = 'storyfi_library_sort'
+const sortOptions = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'name',   label: 'Name' },
+]
+const sortBy = ref(localStorage.getItem(SORT_KEY) || 'newest')
+
+function setSortBy(value) {
+  sortBy.value = value
+  localStorage.setItem(SORT_KEY, value)
+}
+
+const sortedProjects = computed(() => {
+  const list = [...projects.value]
+  switch (sortBy.value) {
+    case 'oldest':
+      return list.sort((a, b) => a.updatedAt - b.updatedAt)
+    case 'name':
+      return list.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+    case 'newest':
+    default:
+      return list.sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+})
 
 onMounted(async () => {
   await load()
@@ -617,6 +657,48 @@ function relativeDate(ts) {
   max-width: 320px;
   line-height: 1.6;
   margin: 0;
+}
+
+/* ─── Sort Toolbar ───────────────────────────────────── */
+.library__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.sort-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+}
+
+.sort-control {
+  display: flex;
+  gap: 2px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.sort-btn {
+  background: none;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-btn:hover { color: var(--color-text) }
+.sort-btn--active {
+  background: var(--color-accent);
+  color: #fff;
 }
 
 /* ─── Project Grid ───────────────────────────────────── */
