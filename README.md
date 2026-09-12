@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v2.2**
+Current version: **v3.0.0**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -27,12 +27,13 @@ npm run preview  # preview production build locally
 
 ## What It Does
 
-1. **Import** a Markdown script (or type directly in the editor)
-2. **Tag** text spans with voice roles (NARRATOR, MAR-VELL, etc.) via the BubbleMenu, or automatically via ⚡ Auto-tag
-3. **Assign voices** — choose a TTS provider and voice for each role in the Cast panel
-4. **Generate** — each tagged paragraph is sent to the TTS engine, audio cached in IndexedDB
-5. **Play** — timeline playback with waveform visualisation and sentence-level highlight sync + follow mode
-6. **Export** — stitched gapless MP3 saved to your chosen output folder via File System Access API
+1. **Create a Solution** — every Project (script) lives inside a Solution, which groups related Projects together (e.g. chapters of a book)
+2. **Import** a Markdown script into a Project (or type directly in the editor)
+3. **Tag** text spans with voice roles (NARRATOR, MAR-VELL, etc.) via the BubbleMenu, or automatically via ⚡ Auto-tag
+4. **Assign voices** — choose a TTS provider and voice for each role in the Cast panel
+5. **Generate** — each tagged paragraph is sent to the TTS engine, audio cached in IndexedDB
+6. **Play** — timeline playback with waveform visualisation and sentence-level highlight sync + follow mode
+7. **Export** — stitched gapless MP3 saved to your chosen output folder via File System Access API, or **Compile Book** a whole Solution's Projects into one combined ZIP
 
 ---
 
@@ -69,7 +70,8 @@ storyfi/
     ├── main.js
     ├── App.vue
     ├── views/
-    │   ├── LibraryView.vue        — Project grid, version number
+    │   ├── LibraryView.vue        — Solution grid, version number, new-Solution flow
+    │   ├── SolutionView.vue       — Projects within one Solution, reorder, Compile Book
     │   └── EditorView.vue         — Desktop dockable workspace + Mobile layout
     ├── panels/
     │   ├── CastPanel.vue          — Role CRUD, voice picker, Auto-tag button
@@ -82,7 +84,7 @@ storyfi/
     │       ├── VoiceTag.js        — Custom Mark: role colour highlights
     │       └── SegmentBreak.js    — Custom Node: manual segment break (§)
     ├── store/
-    │   ├── db.js                  — IndexedDB schema
+    │   ├── db.js                  — IndexedDB schema (projects + solutions stores)
     │   ├── project.js             — Active project state, cast mutations
     │   ├── generation.js          — Group build, TTS queue, stitch, sentence ops
     │   └── playback.js            — Transport, RAF loop, waveform, highlight sync
@@ -105,14 +107,24 @@ storyfi/
     │   ├── filesystem.js
     │   ├── quota.js
     │   └── synccheck.js
+    ├── export/
+    │   └── exporter.js            — ZIP/JSON/HTML/CSV export + compileSolution() (Compile Book)
     ├── modals/
     │   ├── SettingsModal.vue
     │   ├── FolderPromptModal.vue
     │   ├── SyncWarningModal.vue
     │   └── ExportModal.vue
+    ├── utils/
+    │   ├── defaultName.js         — nextDefaultName() — "Solution 1", "Project 1", ...
+    │   ├── relativeDate.js
+    │   ├── waveform.js            — pseudoWaveform() card art
+    │   ├── uuid.js
+    │   ├── debounce.js
+    │   └── colors.js
     └── components/
         ├── DockablePanel.vue
         ├── AudioPlayerBar.vue     — Waveform, transport, scrub, follow mode toggle
+        ├── ProjectCard.vue        — Shared Project card (Solution view)
         ├── StorageBar.vue
         ├── Toast.vue
         └── ConfirmModal.vue
@@ -121,6 +133,15 @@ storyfi/
 ---
 
 ## Features
+
+### Solutions & Projects
+- **Solution** = an ordered group of Projects (e.g. chapters of a book). It's the only top-level container in the Library — there is no standalone/ungrouped Project list.
+- A Project can only be created inside a Solution; new Solutions and Projects default to auto-incrementing names ("Solution 1", "Project 1", ...) so creating one is a single click
+- Library grid shows Solutions only: title, Project count, combined audio size, merged cast avatars across member Projects
+- Inside a Solution: sort by Name/Newest/Oldest, or by manual **Book Order** with ↑/↓ reorder — Book Order is what **Compile Book** uses
+- **Compile Book** bundles every member Project's stitched audio into one ZIP, numbered chapter subfolders + a `book.json` manifest with cumulative book-wide timing
+- Editor shows a "📚 Solution Title ›" breadcrumb in place of a separate Library button — it *is* the back control, taking you straight to that Project's Solution
+- Deleting a Solution cascades to delete its member Projects (and their audio) — there's no "unlink to standalone" limbo to land in
 
 ### Editor
 - Tiptap v2 rich text editor with Markdown import
@@ -191,5 +212,5 @@ storyfi/
 - iOS: File System Access API unavailable — falls back to ZIP export
 - MiniMax API requires a CORS proxy for browser calls (Cloudflare Worker planned)
 - Google Drive integration (requires Worker for OAuth token exchange)
-- Scene/Act/Chapter hierarchy
 - SRT/VTT subtitle export
+- `book.json` (Compile Book) has no sentence-level text/timing yet — only paragraph-group level, since raw Project records don't store sentence text
