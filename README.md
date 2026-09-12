@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.0.0**
+Current version: **v3.1.0**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -156,6 +156,8 @@ storyfi/
 - Creates missing cast members from unmatched labels
 - Italic text (stage directions) skipped; table cells excluded
 - Reports unmatched labels as a toast
+- **No `[LABEL]`s found** → prompts to tag the entire script as Narrator in one click (single-voice narration, PocketFM-style)
+- **Voice inheritance** — any cast role newly created by Auto-Tag (including the Narrator fallback above) silently reuses a matching-label role's voice from up to 8 of the current Solution's most-recently-updated other Projects, if one exists and has a voice picked. Never overwrites a voice the user already set.
 
 ### Cast Panel
 - Up to 10 roles per project
@@ -215,4 +217,3 @@ storyfi/
 - SRT/VTT subtitle export
 - `book.json` (Compile Book) has no sentence-level text/timing yet — only paragraph-group level, since raw Project records don't store sentence text
 - Solution export as `.epub`/eBook — text-only (chapters from each Project's content), no audio; would reuse `jszip` and need a headless ProseMirror/Tiptap serializer (schema + `DOMSerializer`, no mounted editor) to turn stored `editorState` into chapter HTML
-- One-click "Tag entire Project as Narrator" — convenience action for plain-prose Markdown imports with no `[LABEL]` markers, so a user can listen to a whole chapter single-voice (PocketFM-style) without manually selecting all text and tagging it themselves

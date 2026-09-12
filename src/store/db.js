@@ -64,6 +64,21 @@ export async function getAllProjects() {
   return db.getAll('projects')
 }
 
+/**
+ * Up to `limit` most-recently-updated Projects sharing `solutionId`,
+ * excluding `excludeProjectId`, newest first. Used by Auto-Tag to find a
+ * reusable voice cast for a newly-created role from a sibling chapter.
+ */
+export async function getRecentSiblingProjects(solutionId, excludeProjectId, limit = 8) {
+  if (!solutionId) return []
+  const db = await getDB()
+  const all = await db.getAll('projects')
+  return all
+    .filter(p => p.solutionId === solutionId && p.id !== excludeProjectId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, limit)
+}
+
 export async function getProject(id) {
   const db = await getDB()
   return db.get('projects', id)

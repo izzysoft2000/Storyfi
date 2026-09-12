@@ -428,7 +428,7 @@ import SyncWarningModal  from '@/modals/SyncWarningModal.vue'
 import ExportModal       from '@/modals/ExportModal.vue'
 
 // ─── Store + data ────────────────────────────────────────────────────────────
-import { getSetting, getSolution } from '@/store/db.js'
+import { getSetting, getSolution, getRecentSiblingProjects } from '@/store/db.js'
 import { syncCheckOnOpen }    from '@/storage/synccheck.js'
 import { extractTaggedSpans } from '@/editor/splitter.js'
 
@@ -835,9 +835,9 @@ function onRoleDeleted() {
  *   setTextSelection → setVoiceTag → onUpdate fires → editorState saved →
  *   taggedSpans recomputes → watch fires → buildGroupsFromDoc → playlist updates.
  */
-function applyAutoTagQueue(result, source = 'doc') {
+async function applyAutoTagQueue(result, source = 'doc') {
   const { operations, found, unmatched } = result
-  showAutoTagToast({ tagged: operations.length, found, unmatched, source })
+  await showAutoTagToast({ tagged: operations.length, found, unmatched, source })
 
   // Delegate to StoryEditor — it captures editor.value at call time so the
   // correct instance is used even if editorRef changes during the setTimeout chain
@@ -846,6 +846,46 @@ function applyAutoTagQueue(result, source = 'doc') {
     if (json) store.setEditorState(json)
     gen.buildGroupsFromDoc(doc, charLimit.value)
   })
+}
+
+/**
+ * If this Project belongs to a Solution, scan up to 8 of the Solution's
+ * most-recently-updated other Projects for a cast role with a matching
+ * label that already has a real voice picked, and copy that voice onto
+ * `role`. Fully automatic — no picker, just reuse-if-found.
+ */
+async function inheritRecentVoice(role) {
+  // Never clobber a voice the user already deliberately picked
+  if (!role || role.voiceAssignment?.voiceId || !store.project?.solutionId) return
+  const siblings = await getRecentSiblingProjects(store.project.solutionId, store.project.id, 8)
+  const target = role.label.trim().toLowerCase()
+  for (const sibling of siblings) {
+    const match = (sibling.cast ?? []).find(r =>
+      r.label?.trim().toLowerCase() === target && r.voiceAssignment?.voiceId
+    )
+    if (match) {
+      store.updateRoleVoice(role.id, JSON.parse(JSON.stringify(match.voiceAssignment)))
+      return
+    }
+  }
+}
+
+/** Tags the entire document as a single role — the "no [LABEL]s" fallback. */
+async function tagWholeDocumentAsNarrator() {
+  const ed = editorRef.value?.getEditor?.()
+  if (!ed) return
+
+  let role = store.cast.find(r => r.label.trim().toLowerCase() === 'narrator')
+  if (!role) role = await store.addRole('Narrator')
+  await inheritRecentVoice(role)
+
+  ed.chain().focus().selectAll()
+    .setVoiceTag({ roleId: role.id, roleLabel: role.label, color: role.color })
+    .run()
+
+  store.setEditorState(ed.getJSON())
+  gen.buildGroupsFromDoc(ed.state.doc, charLimit.value)
+  toastRef.value?.show(`Tagged entire script as "${role.label}".`, 'success', 3500)
 }
 
 async function onAutoTag() {
@@ -862,10 +902,13 @@ async function onAutoTag() {
       for (const m of node.text.matchAll(LABEL_RE)) labels.add(m[1].trim())
     })
     if (labels.size === 0) {
-      toastRef.value?.show('No [LABEL] patterns found in script.', 'warning', 3500)
+      await promptNarratorFallback()
       return
     }
-    for (const label of labels) await store.addRole(label)
+    for (const label of labels) {
+      const role = await store.addRole(label)
+      await inheritRecentVoice(role)
+    }
     await nextTick()
     toastRef.value?.show(
       `Added ${labels.size} cast member${labels.size !== 1 ? 's' : ''} from script.`,
@@ -879,7 +922,11 @@ async function onAutoTag() {
   for (const label of firstPass.unmatched) {
     const clean = label.replace(/^\[|\]$/g, '').trim()
     const alreadyExists = store.cast.some(r => r.label.trim().toLowerCase() === clean.toLowerCase())
-    if (!alreadyExists) { await store.addRole(clean); newRolesAdded++ }
+    if (!alreadyExists) {
+      const role = await store.addRole(clean)
+      await inheritRecentVoice(role)
+      newRolesAdded++
+    }
   }
   if (newRolesAdded > 0) await nextTick()
   const result = newRolesAdded > 0 ? editorRef.value.applyAutoTag(store.cast) : firstPass
@@ -889,20 +936,32 @@ async function onAutoTag() {
       'success', 3500
     )
   }
-  applyAutoTagQueue(result)
+  await applyAutoTagQueue(result)
 }
 
 function onAutoTagResult(result) {
   applyAutoTagQueue(result, 'selection')
 }
 
-function showAutoTagToast({ tagged, found, unmatched, source = 'doc' }) {
+async function promptNarratorFallback() {
+  const ok = await confirmRef.value.open({
+    title:        'No [LABEL] patterns found',
+    message:      'This script has no [LABEL] markers. Tag the entire script as Narrator so you can generate audio for it as a single voice?',
+    confirmLabel: 'Tag as Narrator',
+    cancelLabel:  'Cancel',
+    variant:      'accent',
+  })
+  if (ok) await tagWholeDocumentAsNarrator()
+}
+
+async function showAutoTagToast({ tagged, found, unmatched, source = 'doc' }) {
   if (tagged === 0 && unmatched.length === 0) {
     if (found > 0) {
       toastRef.value?.show('Already tagged — no new spans to apply.', 'success', 3000)
+    } else if (source === 'doc') {
+      await promptNarratorFallback()
     } else {
-      const msg = source === 'selection' ? 'No [LABEL] patterns found in selection.' : 'No [LABEL] patterns found in script.'
-      toastRef.value?.show(msg, 'warning', 3500)
+      toastRef.value?.show('No [LABEL] patterns found in selection.', 'warning', 3500)
     }
     return
   }
