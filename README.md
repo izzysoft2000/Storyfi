@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.2.1**
+Current version: **v3.2.2**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -149,8 +149,9 @@ storyfi/
 ### Editor
 - Tiptap v2 rich text editor with Markdown import — imports with `breaks: true`, then `splitParagraphsOnBr()` (`editor/splitBrParagraphs.js`) splits any resulting `<br>`-joined paragraph into separate `<p>`s, one per source line. Without this, a script written with single line breaks and no blank lines between them (the common case) gets merged into one paragraph by CommonMark's default rules, which breaks Auto-Tag's per-paragraph stage-direction detection below. Tables/lists are untouched — they're separate DOM structures from marked's block-level parsing regardless of `breaks`.
 - **VoiceTag** mark — highlights text with role colour (pill style: left-border + bg tint)
+- **Comment** mark (`editor/extensions/Comment.js`) — marks a whole paragraph/line as "seen but never voiced" (production notes, meta markers like `— End of Episode 1 —`), without relying on the italic-stage-direction heuristic to guess right. Renders as muted gray text. Mutually exclusive with VoiceTag — applying either always clears the other on that range (`excludes` on both marks, enforced bidirectionally by ProseMirror). Only ever applies to whole paragraphs, never a partial span: the BubbleMenu/mobile "💬 Comment" action always expands the selection out to the full textblock(s) it touches before applying the mark. Comment-marked text is excluded from Playlist/segment generation exactly like plain untagged text.
 - **SegmentBreak** node — manual split point (§)
-- BubbleMenu: role chips + ↗ Jump to Playlist + ✕ Remove
+- BubbleMenu: role chips + 💬 Comment + ↗ Jump to Playlist + ✕ Remove (removes whichever of VoiceTag/Comment is active)
 - Table support (`@tiptap/extension-table` family, pinned to 2.27.2)
 - **PermissiveBold/PermissiveItalic** (`editor/extensions/PermissiveEmphasis.js`) — override Tiptap's stock `**`/`*`/`__`/`_` input rules, which only trigger after whitespace or start-of-line. A lookbehind also accepts common leading punctuation (`"'"‘([{-–—`) so bold/italic typed right inside a quote mark (`"**Wait.**" she said.`) actually applies instead of silently never triggering.
 
@@ -160,6 +161,7 @@ storyfi/
 - Creates missing cast members from unmatched labels
 - **Full stage-direction paragraphs** (a paragraph that is entirely one italic run, e.g. `*He turns away.*`) auto-tag to **Narrator** instead of being skipped — creates the Narrator role first if the cast doesn't have one. `pendingRole` is left untouched, since a direction doesn't change who's speaking next.
 - **Inline italic emphasis** mixed into an otherwise plain paragraph (e.g. `I *really* mean it.`) is tagged the same as the surrounding text, not silently dropped — only a *whole* italic paragraph counts as a stage direction
+- **`[COMMENT]`** is a reserved label, used exactly like a role label (`[JOSE]`) but never added to the cast — everything from a `[COMMENT]` label until the next `[LABEL]` is marked with the Comment mark instead of voiced. This always wins over the full-italic-stage-direction heuristic, so a meta marker like `*— End of Episode 1 —*` can be explicitly excluded instead of being guessed at.
 - Table cells excluded from scanning
 - Reports unmatched labels as a toast
 - **No `[LABEL]`s found** → prompts to tag the entire script as Narrator in one click (single-voice narration, PocketFM-style)

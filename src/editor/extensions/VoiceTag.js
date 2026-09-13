@@ -19,8 +19,10 @@ export const VoiceTag = Mark.create({
   // Allow VoiceTag to span across multiple paragraphs
   spanning: false,
 
-  // Only one VoiceTag at a time on any given text range
-  excludes: 'voiceTag',
+  // Only one VoiceTag at a time on any given text range — also mutually
+  // exclusive with Comment (see Comment.js): tagging a voice always clears
+  // any Comment mark on the same range.
+  excludes: 'voiceTag comment',
 
   addAttributes() {
     return {

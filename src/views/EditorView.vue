@@ -73,7 +73,7 @@
               <span class="m-mode-toggle__opt active">☝</span>
             </button>
             <div class="m-tool-divider" />
-            <button v-if="mobileSelection.selectionIsTagged" class="m-tool-btn m-tool-btn--remove" title="Remove tag" @click="onRemoveTag">✕</button>
+            <button v-if="mobileSelection.selectionIsTagged || mobileSelection.selectionIsCommented" class="m-tool-btn m-tool-btn--remove" title="Remove tag" @click="onRemoveTag">✕</button>
             <button
               v-for="role in store.cast"
               :key="role.id"
@@ -83,6 +83,12 @@
                 background: role.id === mobileSelection.activeRoleId ? role.color : 'transparent' }"
               @click="onMobileTagRole(role)"
             >{{ role.label }}</button>
+            <button
+              class="m-tool-btn m-tool-btn--comment"
+              :class="{ 'm-tool-btn--active': mobileSelection.selectionIsCommented }"
+              title="Mark as Comment — seen but never voiced"
+              @click="onMobileTagComment"
+            >💬</button>
             <button class="m-tool-btn" @click="onAutoTagSelection">⚡</button>
           </div>
 
@@ -629,16 +635,18 @@ function onBreak()   { editorRef.value?.getEditor?.()?.chain().focus().insertSeg
 
 // ── Mobile toolbar state ──────────────────────────────────────────────────────
 const mobileTagMode   = ref(false)
-const mobileSelection = reactive({ hasSelection: false, selectionIsTagged: false, activeRoleId: null })
+const mobileSelection = reactive({ hasSelection: false, selectionIsTagged: false, selectionIsCommented: false, activeRoleId: null })
 const isPlaybackActive = computed(() => playback.isPlaying || playback.isPaused)
 watch(isPlaybackActive, (active) => { if (active) mobileTagMode.value = true })
 
-function onMobileSelectionChange({ hasSelection, selectionIsTagged, activeRoleId }) {
-  mobileSelection.hasSelection      = hasSelection
-  mobileSelection.selectionIsTagged = selectionIsTagged
-  mobileSelection.activeRoleId      = activeRoleId ?? null
+function onMobileSelectionChange({ hasSelection, selectionIsTagged, selectionIsCommented, activeRoleId }) {
+  mobileSelection.hasSelection        = hasSelection
+  mobileSelection.selectionIsTagged   = selectionIsTagged
+  mobileSelection.selectionIsCommented = selectionIsCommented ?? false
+  mobileSelection.activeRoleId        = activeRoleId ?? null
 }
 function onMobileTagRole(role)    { editorRef.value?.applyVoiceTag?.(role) }
+function onMobileTagComment()     { editorRef.value?.applyComment?.() }
 function onRemoveTag()            { editorRef.value?.removeVoiceTag?.() }
 function onAutoTagSelection()     { editorRef.value?.autoTagSelection?.() }
 
@@ -909,7 +917,11 @@ async function onAutoTag() {
     doc.descendants(node => {
       if (node.type.name === 'table') return false
       if (!node.isText) return
-      for (const m of node.text.matchAll(LABEL_RE)) labels.add(m[1].trim())
+      for (const m of node.text.matchAll(LABEL_RE)) {
+        const label = m[1].trim()
+        // [COMMENT] is a reserved keyword (see autoTagger.js) — never a cast role
+        if (label.toLowerCase() !== 'comment') labels.add(label)
+      }
     })
     if (labels.size === 0) {
       await promptNarratorFallback()
@@ -1330,6 +1342,7 @@ function goBack() {
 .m-tool-btn:active        { background: rgba(255,142,110,0.18); color: var(--color-text); }
 .m-tool-btn--disabled     { opacity: 0.3; cursor: default; pointer-events: none; }
 .m-tool-btn--remove       { color: var(--color-error) !important; flex-shrink: 0; }
+.m-tool-btn--comment.m-tool-btn--active { background: rgba(139,133,168,0.25); color: var(--color-text); }
 .m-tool-divider           { width: 1px; height: 18px; background: var(--color-border); margin: 0 2px; flex-shrink: 0; }
 .m-tool-charcount         { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); margin-left: auto; padding-right: 2px; }
 .m-panel-body             { flex: 1; overflow: hidden; display: flex; flex-direction: column; }

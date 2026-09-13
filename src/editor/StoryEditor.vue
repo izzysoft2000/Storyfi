@@ -33,6 +33,12 @@
             {{ role.label }}
           </button>
 
+          <button
+            class="bubble-comment"
+            title="Mark as Comment — seen but never voiced (applies to the whole paragraph)"
+            @mousedown.prevent="applyComment"
+          >💬 Comment</button>
+
           <div class="bubble-divider" />
 
           <!-- Auto-tag selection — scans [LABEL] patterns in selected text only -->
@@ -46,9 +52,9 @@
         </template>
 
         <!-- Cursor-only label (no selection, just inside a tag) -->
-        <span v-else class="bubble-menu__label">Tagged span:</span>
+        <span v-else class="bubble-menu__label">{{ selectionIsCommented ? 'Comment:' : 'Tagged span:' }}</span>
 
-        <!-- Jump to Playlist — shown when cursor/selection is inside a tag -->
+        <!-- Jump to Playlist — shown when cursor/selection is inside a voice tag -->
         <button
           v-if="selectionIsTagged"
           class="bubble-jump"
@@ -56,17 +62,17 @@
           @mousedown.prevent="emit('jump-to-playlist', { from: editor.state.selection.from, to: editor.state.selection.to })"
         >↗</button>
 
-        <!-- Remove — shown whenever cursor/selection is inside a tag -->
+        <!-- Remove — shown whenever cursor/selection is inside a tag or comment -->
         <button
-          v-if="selectionIsTagged"
+          v-if="selectionIsTagged || selectionIsCommented"
           class="role-chip role-chip--remove"
-          title="Remove voice tag from this span"
-          @mousedown.prevent="editor.chain().focus().extendMarkRange('voiceTag').unsetVoiceTag().run()"
+          :title="selectionIsCommented ? 'Remove comment from this span' : 'Remove voice tag from this span'"
+          @mousedown.prevent="removeTagOrComment"
         >✕ Remove</button>
 
         <!-- Segment break — only when text is selected -->
         <template v-if="hasSelection">
-          <div v-if="!selectionIsTagged" class="bubble-divider" />
+          <div v-if="!selectionIsTagged && !selectionIsCommented" class="bubble-divider" />
           <button
             class="bubble-break"
             title="Insert Segment Break here (Ctrl+Shift+Enter)"
@@ -104,6 +110,7 @@ import TableRow     from '@tiptap/extension-table-row'
 import TableCell    from '@tiptap/extension-table-cell'
 import TableHeader  from '@tiptap/extension-table-header'
 import { VoiceTag }     from './extensions/VoiceTag.js'
+import { Comment }      from './extensions/Comment.js'
 import { SegmentBreak } from './extensions/SegmentBreak.js'
 import { PermissiveBold, PermissiveItalic } from './extensions/PermissiveEmphasis.js'
 import { marked }       from 'marked'
@@ -194,6 +201,7 @@ const editor = useEditor({
       emptyNodeClass: 'is-editor-empty',
     }),
     VoiceTag,
+    Comment,
     SegmentBreak,
     Table.configure({ resizable: false }),
     TableRow,
@@ -214,11 +222,13 @@ const editor = useEditor({
 
   onSelectionUpdate: ({ editor }) => {
     const { from, to } = editor.state.selection
-    const isTagged = editor.isActive('voiceTag')
+    const isTagged    = editor.isActive('voiceTag')
+    const isCommented = editor.isActive('comment')
     emit('selection-change', {
-      hasSelection:      from !== to,
-      selectionIsTagged: isTagged,
-      activeRoleId:      isTagged ? (editor.getAttributes('voiceTag').roleId ?? null) : null,
+      hasSelection:       from !== to,
+      selectionIsTagged:  isTagged,
+      selectionIsCommented: isCommented,
+      activeRoleId:       isTagged ? (editor.getAttributes('voiceTag').roleId ?? null) : null,
     })
   },
 
@@ -303,6 +313,11 @@ const selectionIsTagged = computed(() =>
   editor.value?.isActive('voiceTag') ?? false
 )
 
+// True when the cursor or selection is inside a Comment mark
+const selectionIsCommented = computed(() =>
+  editor.value?.isActive('comment') ?? false
+)
+
 // True only when text is actually selected (from !== to)
 const hasSelection = computed(() => {
   if (!editor.value) return false
@@ -311,9 +326,10 @@ const hasSelection = computed(() => {
 })
 
 function shouldShowBubble({ editor: ed, from, to }) {
-  // Show if text is selected, OR if the cursor is sitting inside a tagged span
-  const cursorInTag = ed.isActive('voiceTag')
-  return from !== to || cursorInTag
+  // Show if text is selected, OR if the cursor is sitting inside a tagged
+  // or commented span
+  const cursorInMark = ed.isActive('voiceTag') || ed.isActive('comment')
+  return from !== to || cursorInMark
 }
 
 function applyVoiceTag(role) {
@@ -322,6 +338,42 @@ function applyVoiceTag(role) {
     .focus()
     .setVoiceTag({ roleId: role.id, roleLabel: role.label, color: role.color })
     .run()
+}
+
+/**
+ * Expand a selection out to cover every whole paragraph/textblock it
+ * touches. Comments only ever apply to whole lines, never a partial span —
+ * this is what enforces that regardless of what the user actually selected.
+ */
+function expandToWholeParagraphs(state) {
+  const { from, to } = state.selection
+  const $from = state.doc.resolve(from)
+  const $to   = state.doc.resolve(to)
+
+  let dFrom = $from.depth
+  while (dFrom > 0 && !$from.node(dFrom).isTextblock) dFrom--
+  let dTo = $to.depth
+  while (dTo > 0 && !$to.node(dTo).isTextblock) dTo--
+
+  return { start: $from.start(dFrom), end: $to.end(dTo) }
+}
+
+function applyComment() {
+  if (!editor.value) return
+  const { start, end } = expandToWholeParagraphs(editor.value.state)
+  editor.value
+    .chain()
+    .focus()
+    .setTextSelection({ from: start, to: end })
+    .setComment()
+    .run()
+}
+
+/** Remove whichever mutually-exclusive mark (voiceTag or comment) is active. */
+function removeTagOrComment() {
+  if (!editor.value) return
+  const mark = editor.value.isActive('comment') ? 'comment' : 'voiceTag'
+  editor.value.chain().focus().extendMarkRange(mark).unsetMark(mark).run()
 }
 
 function autoTagSelection() {
@@ -418,10 +470,9 @@ defineExpose({
 
   /** Tag actions — called by EditorView mobile toolbar */
   applyVoiceTag,
+  applyComment,
   autoTagSelection,
-  removeVoiceTag: () => {
-    editor.value?.chain().focus().extendMarkRange('voiceTag').unsetVoiceTag().run()
-  },
+  removeVoiceTag: removeTagOrComment,
   insertSegmentBreak: () => {
     editor.value?.chain().focus().insertSegmentBreak().run()
   },
@@ -461,11 +512,11 @@ defineExpose({
         onComplete(capturedEditor.state.doc, capturedEditor.getJSON())
         return
       }
-      const { from, to, role } = operations[i++]
-      capturedEditor.chain()
-        .setTextSelection({ from, to })
-        .setVoiceTag({ roleId: role.id, roleLabel: role.label, color: role.color })
-        .run()
+      const { from, to, role, comment } = operations[i++]
+      const chain = capturedEditor.chain().setTextSelection({ from, to })
+      if (comment) chain.setComment()
+      else chain.setVoiceTag({ roleId: role.id, roleLabel: role.label, color: role.color })
+      chain.run()
       setTimeout(applyNext, 0)
     }
     applyNext()
@@ -649,6 +700,21 @@ defineExpose({
 }
 .bubble-autotag:hover { background: rgba(124,92,191,0.22); border-color: var(--color-accent) }
 
+.bubble-comment {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.bubble-comment:hover { background: rgba(139,133,168,0.15); color: var(--color-text) }
+
 /* ─── Table styles ───────────────────────────────────────── */
 :deep(.prose-editor) table {
   border-collapse: collapse;
@@ -764,4 +830,9 @@ defineExpose({
 
 /* Untagged text is just normal — the absence of highlight IS the annotation style */
 /* Tagged text gets its style from VoiceTag.renderHTML inline styles */
+
+/* Comment mark — muted gray text, distinct from both plain and voice-tagged text */
+:deep(.prose-editor) .comment-mark {
+  color: var(--color-text-muted);
+}
 </style>

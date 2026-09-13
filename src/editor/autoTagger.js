@@ -10,19 +10,26 @@
  *   [JOSEPH] Now everything belongs to Joseph.
  *
  * Rules:
- *  - pendingRole carries across paragraph/block boundaries
- *  - pendingRole only changes when a new [LABEL] is found
+ *  - `current` (the active role, or "comment mode") persists across
+ *    paragraph/block boundaries
+ *  - `current` only changes when a new [LABEL] is found
  *  - Text before the very first [LABEL] is left untagged
+ *  - [COMMENT] is a reserved label (like a role name, but never added to the
+ *    cast) — everything from a [COMMENT] label until the next [LABEL] is
+ *    marked as a Comment instead of voiced. This is an explicit "seen, but
+ *    never voiced" override — it always wins, even over the stage-direction
+ *    heuristic below.
  *  - A paragraph that is ENTIRELY italic (a full stage-direction line, e.g.
  *    *He turns away.*) is tagged to the "Narrator" role instead of the
- *    current speaker — pendingRole is left unchanged, since a direction
+ *    current speaker — `current` is left unchanged, since a direction
  *    doesn't change who's speaking next. Requires a "Narrator" role to
  *    exist in the cast (see hasFullItalicParagraph()).
  *  - Italic text that is only PART of a paragraph (inline emphasis mixed
  *    with plain text, e.g. "I *really* mean it.") is tagged the same as
  *    the surrounding text — it is NOT stage direction and must not be
  *    silently dropped from the sentence's audio.
- *  - Text that already has a voiceTag mark is skipped (merge mode)
+ *  - Text that already has a voiceTag or comment mark is skipped (merge
+ *    mode) — only the label matches inside are used to update `current`
  *  - Reports unmatched labels
  */
 
@@ -64,7 +71,7 @@ function isFullItalicParagraph(paragraphNode) {
  * @param {number} [options.from] — start of doc range (omit for full doc)
  * @param {number} [options.to]   — end of doc range (omit for full doc)
  *
- * @returns {{ operations: {from,to,role}[], found: number, unmatched: string[] }}
+ * @returns {{ operations: {from,to,role}[]|{from,to,comment:true}[], found: number, unmatched: string[] }}
  */
 export function buildAutoTagOperations(editor, roles, options) {
   if (!editor || !roles?.length) return { operations: [], found: 0, unmatched: [] }
@@ -75,6 +82,16 @@ export function buildAutoTagOperations(editor, roles, options) {
   }
   const narratorRole = roleMap.get('narrator')
 
+  // Resolves a raw [LABEL] name to what it should switch `current` to.
+  //   [COMMENT] (case-insensitive)     → comment mode
+  //   a label matching a cast role     → that role
+  //   anything else                    → null (unmatched)
+  function resolveLabel(labelRaw) {
+    if (labelRaw.trim().toLowerCase() === 'comment') return { type: 'comment' }
+    const role = roleMap.get(labelRaw.trim().toLowerCase())
+    return role ? { type: 'role', role } : null
+  }
+
   const doc        = editor.state.doc
   const rangeFrom  = options?.from ?? 0
   const rangeTo    = options?.to   ?? doc.content.size
@@ -82,12 +99,22 @@ export function buildAutoTagOperations(editor, roles, options) {
   let   found      = 0
   const unmatched  = new Set()
 
-  // pendingRole persists across paragraph boundaries.
-  // Everything from a [LABEL] until the next [LABEL] belongs to that role.
-  let pendingRole = null
+  // `current` persists across paragraph boundaries — everything from a
+  // [LABEL] (or [COMMENT]) until the next [LABEL] belongs to it.
+  //   { type: 'role', role } — normal section-ownership tagging
+  //   { type: 'comment' }    — [COMMENT] section: seen, never voiced
+  //   null                   — before the first label — leave untagged
+  let current = null
 
   // Set whenever we enter a paragraph node — read by its child text nodes.
   let currentParagraphIsStageDirection = false
+
+  function pushSpan(from, to) {
+    if (from < 0 || from >= to) return
+    if (current?.type === 'comment') operations.push({ from, to, comment: true })
+    else if (current?.type === 'role') operations.push({ from, to, role: current.role })
+    // current === null → leave untagged
+  }
 
   doc.descendants((node, pos) => {
     // Skip entire table subtrees — [LABEL] patterns inside tables are
@@ -99,7 +126,7 @@ export function buildAutoTagOperations(editor, roles, options) {
       return
     }
 
-    // Skip non-text nodes — but DON'T reset pendingRole (it carries across paragraphs)
+    // Skip non-text nodes — but DON'T reset `current` (it carries across paragraphs)
     if (!node.isText) return
 
     if (pos + node.nodeSize <= rangeFrom || pos >= rangeTo) return
@@ -108,26 +135,28 @@ export function buildAutoTagOperations(editor, roles, options) {
     if (!text) return
 
     const hasVoiceTag = node.marks.some(m => m.type.name === 'voiceTag')
+    const hasComment  = node.marks.some(m => m.type.name === 'comment')
     const isItalic    = node.marks.some(m => m.type.name === 'italic')
 
     LABEL_RE.lastIndex = 0
     const matches = [...text.matchAll(LABEL_RE)]
 
-    if (hasVoiceTag) {
-      // Already tagged — update pendingRole if there's a new label here
+    if (hasVoiceTag || hasComment) {
+      // Already tagged — update `current` if there's a new label here
       if (matches.length > 0) {
         found++
         const lastMatch = matches[matches.length - 1]
-        const lastRole  = roleMap.get(lastMatch[1].trim().toLowerCase())
-        if (lastRole) pendingRole = lastRole
+        const resolved  = resolveLabel(lastMatch[1])
+        if (resolved) current = resolved
       }
       return
     }
 
     // A full stage-direction line (whole paragraph is italic) — tag to
-    // Narrator, if the cast has one. pendingRole carries through untouched:
-    // a direction doesn't change who speaks next.
-    if (isItalic && currentParagraphIsStageDirection) {
+    // Narrator, if the cast has one. `current` carries through untouched: a
+    // direction doesn't change who speaks next. An explicit [COMMENT]
+    // section always wins over this heuristic — it's a deliberate override.
+    if (isItalic && currentParagraphIsStageDirection && current?.type !== 'comment') {
       if (narratorRole) {
         const trimStart = text.search(/\S/)
         const trimEnd   = text.trimEnd().length
@@ -143,55 +172,47 @@ export function buildAutoTagOperations(editor, roles, options) {
     // so the word isn't silently dropped from its sentence's audio.
 
     if (matches.length === 0) {
-      // No label — tag entire node with current pendingRole (if any)
-      if (pendingRole) {
-        const trimStart = text.search(/\S/)
-        const trimEnd   = text.trimEnd().length
-        if (trimStart >= 0 && trimStart < trimEnd) {
-          operations.push({ from: pos + trimStart, to: pos + trimEnd, role: pendingRole })
-        }
-      }
+      // No label — tag entire node with whatever `current` already is
+      const trimStart = text.search(/\S/)
+      const trimEnd   = text.trimEnd().length
+      if (trimStart >= 0) pushSpan(pos + trimStart, pos + trimEnd)
       return
     }
 
     found++
 
-    // Tag text BEFORE the first label with the current pendingRole
-    if (pendingRole && matches[0].index > 0) {
+    // Tag text BEFORE the first label with whatever `current` already is
+    if (matches[0].index > 0) {
       const before     = text.slice(0, matches[0].index)
       const trimStart  = before.search(/\S/)
       const trimEnd    = before.trimEnd().length
-      if (trimStart >= 0 && trimStart < trimEnd) {
-        operations.push({ from: pos + trimStart, to: pos + trimEnd, role: pendingRole })
-      }
+      if (trimStart >= 0) pushSpan(pos + trimStart, pos + trimEnd)
     }
 
     // Process each [LABEL] in this node
     for (let i = 0; i < matches.length; i++) {
       const match    = matches[i]
       const labelRaw = match[1]
-      const role     = roleMap.get(labelRaw.trim().toLowerCase())
+      const resolved = resolveLabel(labelRaw)
 
-      if (!role) {
+      if (!resolved) {
         unmatched.add(`[${labelRaw}]`)
-        // Keep pendingRole unchanged — unmatched labels don't interrupt flow
+        // Keep `current` unchanged — unmatched labels don't interrupt flow
         continue
       }
 
-      // Update pendingRole to this new label
-      pendingRole = role
+      // Update `current` to this new label
+      current = resolved
 
       const tagStart = match.index + match[0].length
       const tagEnd   = i + 1 < matches.length ? matches[i + 1].index : text.length
       const spanText = text.slice(tagStart, tagEnd)
       const trimStart = spanText.search(/\S/)
 
-      if (trimStart < 0) continue // no text after label in this node — pendingRole carries over
+      if (trimStart < 0) continue // no text after label in this node — `current` carries over
 
       const trimEnd = spanText.trimEnd().length
-      const from    = pos + tagStart + trimStart
-      const to      = pos + tagStart + trimEnd
-      if (from < to) operations.push({ from, to, role })
+      pushSpan(pos + tagStart + trimStart, pos + tagStart + trimEnd)
     }
   })
 
