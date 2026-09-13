@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.2.0**
+Current version: **v3.2.1**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -80,6 +80,7 @@ storyfi/
     │   ├── StoryEditor.vue        — Tiptap editor, BubbleMenu, MD import, decorations
     │   ├── autoTagger.js          — [LABEL] pattern scanner → tagging operations queue
     │   ├── splitter.js            — Sentence extraction, extractTaggedSpans()
+    │   ├── splitBrParagraphs.js   — Splits <br>-joined import paragraphs into separate <p>s
     │   └── extensions/
     │       ├── VoiceTag.js        — Custom Mark: role colour highlights
     │       ├── SegmentBreak.js    — Custom Node: manual segment break (§)
@@ -146,7 +147,7 @@ storyfi/
 - Deleting a Solution cascades to delete its member Projects (and their audio) — there's no "unlink to standalone" limbo to land in
 
 ### Editor
-- Tiptap v2 rich text editor with Markdown import
+- Tiptap v2 rich text editor with Markdown import — imports with `breaks: true`, then `splitParagraphsOnBr()` (`editor/splitBrParagraphs.js`) splits any resulting `<br>`-joined paragraph into separate `<p>`s, one per source line. Without this, a script written with single line breaks and no blank lines between them (the common case) gets merged into one paragraph by CommonMark's default rules, which breaks Auto-Tag's per-paragraph stage-direction detection below. Tables/lists are untouched — they're separate DOM structures from marked's block-level parsing regardless of `breaks`.
 - **VoiceTag** mark — highlights text with role colour (pill style: left-border + bg tint)
 - **SegmentBreak** node — manual split point (§)
 - BubbleMenu: role chips + ↗ Jump to Playlist + ✕ Remove

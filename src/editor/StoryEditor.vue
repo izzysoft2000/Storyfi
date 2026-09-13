@@ -111,6 +111,7 @@ import { debounce }     from '@/utils/debounce.js'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { buildAutoTagOperations } from '@/editor/autoTagger.js'
+import { splitParagraphsOnBr } from '@/editor/splitBrParagraphs.js'
 
 import { extractTaggedSpans }    from '@/editor/splitter.js'
 import { useMobileLayout }       from '@/composables/useMobileLayout.js'
@@ -343,7 +344,7 @@ function onMdFile(e) {
   const reader = new FileReader()
   reader.onload = ev => {
     const raw  = ev.target.result
-    const html = marked.parse(raw, { gfm: true, breaks: false })
+    const html = splitParagraphsOnBr(marked.parse(raw, { gfm: true, breaks: true }))
     editor.value?.commands.setContent(html, true)
     emit('import-markdown', raw)
   }
@@ -357,7 +358,7 @@ defineExpose({
 
   /** Import raw Markdown string programmatically */
   importMarkdown: (md) => {
-    const html = marked.parse(md, { gfm: true, breaks: false })
+    const html = splitParagraphsOnBr(marked.parse(md, { gfm: true, breaks: true }))
     editor.value?.commands.setContent(html, true)
   },
 
