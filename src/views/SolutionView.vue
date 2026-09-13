@@ -1,22 +1,39 @@
 <template>
   <div class="library">
-    <!-- Header -->
-    <header class="library-header">
-      <div class="brand-group">
-        <button class="back-link" @click="$emit('go-library')">← Solutions</button>
-        <div class="title-row">
-          <h1 class="app-title">{{ solution?.title ?? 'Loading…' }}</h1>
-          <button v-if="solution" class="rename-btn" title="Rename Solution" @click="openRename">✎</button>
-        </div>
-        <p class="app-subtitle">SOLUTION</p>
+    <!-- Header — same nav bar language as the Editor's ws-toolbar -->
+    <header class="ws-toolbar">
+      <div class="wst-group wst-group--left">
+        <button class="wst-btn wst-btn--ghost" title="Back to Solutions" @click="$emit('go-library')">←</button>
       </div>
-      <button
-        class="lib-theme-btn"
-        :title="isDark ? 'Switch to Light mode' : 'Switch to Dark mode'"
-        @click="toggleTheme"
-      >
-        <span v-if="isDark">☀</span><span v-else>🌙</span>
-      </button>
+
+      <div class="wst-title-center">
+        <div
+          v-if="!editingTitle"
+          class="wst-title"
+          title="Click to rename"
+          @click="startEditTitle"
+        >{{ solution?.title ?? 'Loading…' }}</div>
+        <input
+          v-else
+          ref="titleInputRef"
+          class="wst-title-input"
+          :value="solution.title"
+          maxlength="80"
+          @blur="commitTitle($event.target.value)"
+          @keydown.enter="commitTitle($event.target.value)"
+          @keydown.esc="editingTitle = false"
+        />
+      </div>
+
+      <div class="wst-group wst-group--right">
+        <button
+          class="wst-btn theme-toggle-btn"
+          :title="isDark ? 'Switch to Light mode' : 'Switch to Dark mode'"
+          @click="toggleTheme"
+        >
+          <span v-if="isDark">☀ Light</span><span v-else>🌙 Dark</span>
+        </button>
+      </div>
     </header>
 
     <!-- Toolbar — stays fixed above the scrolling project grid -->
@@ -114,34 +131,6 @@
                 :disabled="!newProjectTitle.trim()"
                 @click="confirmNewProject"
               >Create</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
-    <!-- Rename Solution Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="renameModal" class="modal-backdrop" @click.self="renameModal = false">
-          <div class="modal">
-            <h3 class="modal__title">Rename Solution</h3>
-            <input
-              ref="renameInput"
-              v-model="renameTitle"
-              class="modal__input"
-              placeholder="Solution title…"
-              maxlength="80"
-              @keydown.enter="confirmRename"
-              @keydown.esc="renameModal = false"
-            />
-            <div class="modal__actions">
-              <button class="btn btn--ghost" @click="renameModal = false">Cancel</button>
-              <button
-                class="btn btn--accent"
-                :disabled="!renameTitle.trim()"
-                @click="confirmRename"
-              >Save</button>
             </div>
           </div>
         </div>
@@ -279,22 +268,20 @@ async function confirmNewProject() {
   emit('open-project', p.id)
 }
 
-// ─── Rename Solution ─────────────────────────────────────────────────────────
+// ─── Rename Solution (inline, click-to-edit like the Editor's title) ────────
 
-const renameModal = ref(false)
-const renameTitle = ref('')
-const renameInput = ref(null)
+const editingTitle  = ref(false)
+const titleInputRef = ref(null)
 
-function openRename() {
-  renameTitle.value = solution.value.title
-  renameModal.value = true
-  nextTick(() => renameInput.value?.focus())
+function startEditTitle() {
+  editingTitle.value = true
+  nextTick(() => { titleInputRef.value?.focus(); titleInputRef.value?.select() })
 }
 
-async function confirmRename() {
-  const title = renameTitle.value.trim()
-  if (!title) return
-  renameModal.value = false
+async function commitTitle(val) {
+  const title = val?.trim()
+  editingTitle.value = false
+  if (!title || title === solution.value.title) return
   solution.value.title = title
   await saveSolution(solution.value)
 }
@@ -378,95 +365,53 @@ async function doCompile() {
   }
 }
 
-/* ─── Header ─────────────────────────────────────────── */
-.library-header {
-  display: flex;
+/* ─── Header — same nav bar language as the Editor's ws-toolbar ─────────── */
+.ws-toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  padding: 28px 48px 24px;
-  border-bottom: 1px solid var(--color-border);
+  gap: 0;
+  height: 40px;
   flex-shrink: 0;
-  position: relative;
-}
-
-@media (max-width: 600px) {
-  .library-header { padding: 14px 16px 12px; }
-}
-
-.back-link {
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  font-family: var(--font-ui);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 0 0 6px;
-  transition: color 0.15s;
-}
-.back-link:hover { color: var(--color-accent) }
-
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.app-title {
-  font-family: var(--font-display);
-  font-size: 2.2rem;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 70vw;
-}
-
-@media (max-width: 600px) {
-  .app-title { font-size: 1.5rem; max-width: 60vw; }
-}
-
-.rename-btn {
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: 50%;
-  width: 26px;
-  height: 26px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  flex-shrink: 0;
-  transition: color 0.15s, border-color 0.15s;
-}
-.rename-btn:hover { color: var(--color-accent); border-color: var(--color-accent) }
-
-.app-subtitle {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  letter-spacing: 0.08em;
-  margin: 2px 0 0;
-}
-
-.lib-theme-btn {
-  position: absolute;
-  top: 50%;
-  right: 16px;
-  transform: translateY(-50%);
-  background: var(--color-surface-soft);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-.lib-theme-btn:hover {
   background: var(--color-surface);
-  color: var(--color-accent);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 8px;
+}
+
+.wst-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.wst-group--left  { justify-self: start; }
+.wst-group--right { justify-self: end; }
+
+.wst-title-center {
+  justify-self: center;
+  min-width: 0;
+}
+
+.wst-btn {
+  background: none; border: 1px solid transparent; border-radius: 5px;
+  color: var(--color-text-muted); font-size: 12px; font-family: var(--font-ui);
+  padding: 3px 9px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+}
+.wst-btn:hover { background: var(--color-border); color: var(--color-text) }
+.wst-btn--ghost { color: var(--color-text-muted) }
+
+.wst-title {
+  font-family: var(--font-display); font-size: 14px; font-weight: 600;
+  color: var(--color-text); cursor: pointer; padding: 2px 6px; border-radius: 4px;
+  max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background 0.1s;
+}
+.wst-title:hover { background: var(--color-border) }
+
+.wst-title-input {
+  font-family: var(--font-display); font-size: 14px; font-weight: 600;
+  color: var(--color-text); background: var(--color-border);
+  border: 1px solid var(--color-accent); border-radius: 4px;
+  padding: 2px 6px; outline: none; width: min(340px, 60vw);
 }
 
 /* ─── Toolbar ────────────────────────────────────────── */
