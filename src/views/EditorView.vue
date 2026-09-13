@@ -431,6 +431,7 @@ import ExportModal       from '@/modals/ExportModal.vue'
 import { getSetting, getSolution, getRecentSiblingProjects } from '@/store/db.js'
 import { syncCheckOnOpen }    from '@/storage/synccheck.js'
 import { extractTaggedSpans } from '@/editor/splitter.js'
+import { hasFullItalicParagraph } from '@/editor/autoTagger.js'
 
 registerProvider(minimaxProvider)
 registerProvider(openaiProvider)
@@ -890,6 +891,15 @@ async function tagWholeDocumentAsNarrator() {
 
 async function onAutoTag() {
   if (!editorRef.value) return
+
+  // Full-paragraph stage directions (*He turns away.*) auto-tag to Narrator —
+  // make sure that role exists before the main pass runs.
+  const hasNarrator = store.cast.some(r => r.label.trim().toLowerCase() === 'narrator')
+  if (!hasNarrator && hasFullItalicParagraph(editorRef.value.getEditor?.())) {
+    const role = await store.addRole('Narrator')
+    await inheritRecentVoice(role)
+    await nextTick()
+  }
 
   if (store.cast.length === 0) {
     const doc = editorRef.value.getDoc?.()

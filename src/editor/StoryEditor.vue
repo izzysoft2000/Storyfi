@@ -105,6 +105,7 @@ import TableCell    from '@tiptap/extension-table-cell'
 import TableHeader  from '@tiptap/extension-table-header'
 import { VoiceTag }     from './extensions/VoiceTag.js'
 import { SegmentBreak } from './extensions/SegmentBreak.js'
+import { PermissiveBold, PermissiveItalic } from './extensions/PermissiveEmphasis.js'
 import { marked }       from 'marked'
 import { debounce }     from '@/utils/debounce.js'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
@@ -180,7 +181,13 @@ const editor = useEditor({
     StarterKit.configure({
       // Disable history for now — will add undo/redo in a later phase
       history: { depth: 50 },
+      // Replaced below with versions whose input rules tolerate leading
+      // punctuation (quotes, parens) — see PermissiveEmphasis.js
+      bold: false,
+      italic: false,
     }),
+    PermissiveBold,
+    PermissiveItalic,
     Placeholder.configure({
       placeholder: 'Import a Markdown file or start typing your script here.\n\nSelect text to assign a voice role.',
       emptyNodeClass: 'is-editor-empty',

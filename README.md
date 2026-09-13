@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.1.1**
+Current version: **v3.2.0**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -82,7 +82,8 @@ storyfi/
     │   ├── splitter.js            — Sentence extraction, extractTaggedSpans()
     │   └── extensions/
     │       ├── VoiceTag.js        — Custom Mark: role colour highlights
-    │       └── SegmentBreak.js    — Custom Node: manual segment break (§)
+    │       ├── SegmentBreak.js    — Custom Node: manual segment break (§)
+    │       └── PermissiveEmphasis.js — Bold/Italic with punctuation-tolerant input rules
     ├── store/
     │   ├── db.js                  — IndexedDB schema (projects + solutions stores)
     │   ├── project.js             — Active project state, cast mutations
@@ -150,15 +151,18 @@ storyfi/
 - **SegmentBreak** node — manual split point (§)
 - BubbleMenu: role chips + ↗ Jump to Playlist + ✕ Remove
 - Table support (`@tiptap/extension-table` family, pinned to 2.27.2)
+- **PermissiveBold/PermissiveItalic** (`editor/extensions/PermissiveEmphasis.js`) — override Tiptap's stock `**`/`*`/`__`/`_` input rules, which only trigger after whitespace or start-of-line. A lookbehind also accepts common leading punctuation (`"'"‘([{-–—`) so bold/italic typed right inside a quote mark (`"**Wait.**" she said.`) actually applies instead of silently never triggering.
 
 ### Auto-Tagging
 - Scans document for `[LABEL]` patterns
 - Section-ownership model — `pendingRole` carries across paragraphs until next label
 - Creates missing cast members from unmatched labels
-- Italic text (stage directions) skipped; table cells excluded
+- **Full stage-direction paragraphs** (a paragraph that is entirely one italic run, e.g. `*He turns away.*`) auto-tag to **Narrator** instead of being skipped — creates the Narrator role first if the cast doesn't have one. `pendingRole` is left untouched, since a direction doesn't change who's speaking next.
+- **Inline italic emphasis** mixed into an otherwise plain paragraph (e.g. `I *really* mean it.`) is tagged the same as the surrounding text, not silently dropped — only a *whole* italic paragraph counts as a stage direction
+- Table cells excluded from scanning
 - Reports unmatched labels as a toast
 - **No `[LABEL]`s found** → prompts to tag the entire script as Narrator in one click (single-voice narration, PocketFM-style)
-- **Voice inheritance** — any cast role newly created by Auto-Tag (including the Narrator fallback above) silently reuses a matching-label role's voice from up to 8 of the current Solution's most-recently-updated other Projects, if one exists and has a voice picked. Never overwrites a voice the user already set.
+- **Voice inheritance** — any cast role newly created by Auto-Tag (including both Narrator paths above) silently reuses a matching-label role's voice from up to 8 of the current Solution's most-recently-updated other Projects, if one exists and has a voice picked. Never overwrites a voice the user already set.
 
 ### Cast Panel
 - Up to 10 roles per project
