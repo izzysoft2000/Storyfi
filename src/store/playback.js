@@ -369,9 +369,9 @@ export const usePlaybackStore = defineStore('playback', {
      *
      * @param {object[]} groups - project.paragraphGroups
      * @param {number} [startGroupIdx=0]
-     * @param {string} [projectTitle='Storyfi'] - shown on iOS lock screen
+     * @param {string} [projectTitle='OraTale'] - shown on iOS lock screen
      */
-    async loadAndPlay(groups, startGroupIdx = 0, projectTitle = 'Storyfi') {
+    async loadAndPlay(groups, startGroupIdx = 0, projectTitle = 'OraTale') {
       this._cleanup()
       this.isLoading = true
       this.loadError = null
@@ -1043,8 +1043,8 @@ export const usePlaybackStore = defineStore('playback', {
     _setupMediaSession(title) {
       if (!('mediaSession' in navigator)) return
       navigator.mediaSession.metadata = new MediaMetadata({
-        title:  title || 'Storyfi',
-        artist: 'Storyfi',
+        title:  title || 'OraTale',
+        artist: 'OraTale',
       })
       navigator.mediaSession.setActionHandler('play',  () => {
         if (this.isPaused) this.resume()

@@ -4,7 +4,7 @@
     <header class="library-header">
       <div class="brand-group">
         <div class="title-row">
-          <h1 class="app-title">Storyfi</h1>
+          <h1 class="app-title">OraTale</h1>
           <button class="app-version" @click="showBuildInfo = true">v{{ appVersion }}</button>
           <button
             v-if="canInstallChrome"
@@ -18,7 +18,7 @@
       <!-- Build info dialog -->
       <div v-if="showBuildInfo" class="build-dialog-backdrop" @click.self="showBuildInfo = false">
         <div class="build-dialog">
-          <p class="build-dialog-title">Storyfi v{{ appVersion }}</p>
+          <p class="build-dialog-title">OraTale v{{ appVersion }}</p>
           <p class="build-dialog-date">Built {{ buildDateDisplay }}</p>
           <button class="build-dialog-close" @click="showBuildInfo = false">OK</button>
         </div>
@@ -168,7 +168,7 @@
         <div class="install-hint__inner">
           <span class="install-hint__icon">⬆</span>
           <span class="install-hint__text">
-            Tap <b>Share</b> then <b>Add to Home Screen</b> to install Storyfi
+            Tap <b>Share</b> then <b>Add to Home Screen</b> to install OraTale
           </span>
           <button class="install-hint__close" @click.stop="dismissInstallHint">✕</button>
         </div>
@@ -966,7 +966,7 @@ function solutionAudioBytes(s) {
 .title-row {
   display: flex;
   align-items: center;
-  gap: 15px; /* Space between Storyfi and the button */
+  gap: 15px; /* Space between the app title and the button */
 }
 
 .install-pill {

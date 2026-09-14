@@ -30,11 +30,11 @@ export function buildFilename(group) {
  * Safe slug for ZIP filename.
  */
 export function projectSlug(title) {
-  return String(title ?? 'storyfi')
+  return String(title ?? 'oratale')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-    .slice(0, 40) || 'storyfi'
+    .slice(0, 40) || 'oratale'
 }
 
 // ─── Download helper ────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ export function buildHTML(project, groups, { standalone = false } = {}) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — Storyfi Export</title>
+  <title>${title} — OraTale Export</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0e0c18; color: #e2dff0; line-height: 1.7; padding: 40px 24px; max-width: 800px; margin: 0 auto; }
@@ -171,7 +171,7 @@ export function buildHTML(project, groups, { standalone = false } = {}) {
 </head>
 <body>
   <h1>${title}</h1>
-  <p class="meta">Exported by Storyfi · ${escapeHtml(exportedAt)}</p>
+  <p class="meta">Exported by OraTale · ${escapeHtml(exportedAt)}</p>
   ${standaloneNote}
   ${groupsHtml}
 </body>

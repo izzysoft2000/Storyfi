@@ -1,6 +1,6 @@
 {
-  "name": "Storyfi",
-  "short_name": "Storyfi",
+  "name": "OraTale",
+  "short_name": "OraTale",
   "description": "Multi-voice audio production from Markdown",
   "start_url": "/",
   "display": "standalone",

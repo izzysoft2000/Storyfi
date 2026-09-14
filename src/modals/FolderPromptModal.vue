@@ -6,7 +6,7 @@
           <div class="modal__icon">📁</div>
           <h3 class="modal__title">Where should audio files be saved?</h3>
           <p class="modal__body">
-            Storyfi can write MP3 files directly to a folder on your computer
+            OraTale can write MP3 files directly to a folder on your computer
             as they're generated — so your audio is always on disk, not just in the browser.
           </p>
 
