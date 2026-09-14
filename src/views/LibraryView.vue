@@ -468,7 +468,9 @@ function solutionAudioBytes(s) {
   gap: 8px;
 }
 .build-dialog-title {
-  font-family: var(--font-display);
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-weight: 600;
   font-size: 18px;
   color: var(--color-text);
   margin: 0;
@@ -990,7 +992,9 @@ function solutionAudioBytes(s) {
 
 
 .app-title {
-  font-family: var(--font-display);
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-weight: 600;
   font-size: 2.5rem;
   margin: 0;
 }
