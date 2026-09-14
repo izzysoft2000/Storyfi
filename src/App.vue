@@ -1,11 +1,11 @@
 <template>
-  <LibraryView
+  <SolutionsView
   v-if="view === 'library'"
   :can-install="!!installEvent"
   @open-solution="navigateToSolution"
   @install="triggerInstall"
   />
-  <SolutionView
+  <ProjectsView
   v-else-if="view === 'solution'"
   :solution-id="activeSolutionId"
   @go-library="navigateLibrary"
@@ -22,8 +22,8 @@
 
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
-import LibraryView  from '@/views/LibraryView.vue'
-import SolutionView from '@/views/SolutionView.vue'
+import SolutionsView from '@/views/SolutionsView.vue'
+import ProjectsView  from '@/views/ProjectsView.vue'
 import EditorView   from '@/views/EditorView.vue'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { useTheme } from '@/composables/usePanelLayout'

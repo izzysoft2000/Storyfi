@@ -210,7 +210,7 @@ const newTitleInput    = ref(null)
 
 const props = defineProps({
   // canInstall was removed — Chrome install is now handled via
-  // beforeinstallprompt listener inside LibraryView directly
+  // beforeinstallprompt listener inside SolutionsView directly
 })
 
 async function load() {
