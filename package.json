@@ -1,6 +1,6 @@
 {
   "name": "storyfi",
-  "version": "3.2.5",
+  "version": "3.2.6",
   "description": "Multi-voice audio production from Markdown",
   "type": "module",
   "scripts": {

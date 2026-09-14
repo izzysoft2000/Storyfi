@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.2.5**
+Current version: **v3.2.6**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -144,6 +144,7 @@ storyfi/
 - **Compile Book** bundles every member Project's stitched audio into one ZIP, numbered chapter subfolders + a `book.json` manifest with cumulative book-wide timing
 - Editor shows a "📚 Solution Title ›" breadcrumb in place of a separate Library button — it *is* the back control, taking you straight to that Project's Solution
 - ProjectsView's header reuses the Editor's `ws-toolbar` nav bar language: back arrow (left), Solution title click-to-rename inline (center), theme toggle (right) — same visual system across both screens
+- Below 600px, the title switches from the desktop grid's fixed-width boxed input to the Editor's mobile treatment: the title flexes to fill the row and the rename input becomes an underline instead of a boxed field (`@media (max-width: 600px)` in ProjectsView.vue, mirroring EditorView's `.m-title`/`.m-title-input`)
 - Deleting a Solution cascades to delete its member Projects (and their audio) — there's no "unlink to standalone" limbo to land in
 
 ### Editor

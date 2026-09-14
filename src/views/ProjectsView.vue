@@ -414,6 +414,39 @@ async function doCompile() {
   padding: 2px 6px; outline: none; width: min(340px, 60vw);
 }
 
+/* On small screens, match the Editor's mobile title treatment instead of the
+   desktop grid layout: title fills the row between the fixed-width buttons
+   (rather than being capped to a narrow center grid column) and the input
+   becomes an underline instead of a boxed field — same visual language as
+   EditorView's .m-title / .m-title-input. */
+@media (max-width: 600px) {
+  .ws-toolbar {
+    display: flex;
+    height: 48px;
+    gap: 8px;
+  }
+  .wst-group--left, .wst-group--right { flex-shrink: 0; }
+  .wst-title-center {
+    flex: 1;
+    min-width: 0;
+  }
+  .wst-title {
+    width: 100%;
+    max-width: none;
+    font-size: 15px;
+    text-align: center;
+  }
+  .wst-title-input {
+    width: 100%;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--color-accent);
+    border-radius: 0;
+    font-size: 15px;
+    text-align: center;
+  }
+}
+
 /* ─── Toolbar ────────────────────────────────────────── */
 .library__toolbar {
   display: flex;
