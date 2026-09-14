@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.2.4**
+Current version: **v3.2.5**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -214,6 +214,9 @@ storyfi/
 
 ### onAutoTag MUST be async
 `store.addRole()` reads from IndexedDB (async). `onAutoTag` must `await` every `addRole` call and `await nextTick()` before running `applyAutoTag`. Without this: "No [LABEL] patterns found" fires immediately after "Added N cast members". **This fix gets lost easily — check first after any EditorView.vue edit.**
+
+### Silent SW auto-update can race an in-flight IndexedDB write
+`App.vue` reloads the page as soon as a new build is detected (see §12/PWA lifecycle) — but reloading closes the IndexedDB connection, and a `db.put`/`transaction` call caught mid-flight throws `InvalidStateError: The database connection is closing`, which reads as "can't create a Solution/Project" with no obvious cause. `db.js` tracks in-flight writes (`hasPendingWrites()`, wrapping every write function in `withWrite()`); `App.vue`'s update watcher polls it (5s cap) before calling `updateServiceWorker(true)`. Any new write function added to `db.js` needs the same `withWrite()` wrapper or this protection silently stops covering it. `getDB()` also resets its cached connection via `openDB`'s `terminated` callback, so a connection that dies for any other reason self-heals on the next call instead of failing forever.
 
 ### App icon changes need a manual cache-bust
 `public/manifest.json`'s icon `src`s and `index.html`'s `<link rel="icon">`/`apple-touch-icon` carry a `?v=X.X.X` query tied to `package.json`'s version — bump all three together whenever `public/icons/*.png` changes. Workbox precaches the bare file path, so the query isn't for the service worker; it's so installed PWA shortcuts actually notice the icon changed. Windows in particular snapshots the icon into a shell-cached `.ico` at install time and won't refresh it on a plain uninstall/reinstall — a version-bumped URL is the only lever available from the app side. Even then, a truly stuck OS icon cache may need `ie4uinit.exe -show` or an Explorer restart on the user's end.

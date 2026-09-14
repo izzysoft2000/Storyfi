@@ -27,6 +27,7 @@ import ProjectsView  from '@/views/ProjectsView.vue'
 import EditorView   from '@/views/EditorView.vue'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { useTheme } from '@/composables/usePanelLayout'
+import { hasPendingWrites } from '@/store/db.js'
 
 const { initTheme } = useTheme()
 
@@ -38,10 +39,24 @@ const activeSolutionId = ref(null)
 // Auto-apply new builds as soon as they're detected — the app autosaves
 // every 2s (see §12), so there's nothing to lose by reloading silently
 // rather than waiting on a banner click.
+//
+// Reloading closes the IndexedDB connection — if that happens while a write
+// (e.g. saveSolution/saveProject) is still in flight, the transaction can
+// throw "InvalidStateError: The database connection is closing" and the
+// user's action appears to silently fail. Wait for in-flight writes to
+// settle first, capped so a stuck flag can never block the update forever.
 const { needRefresh, updateServiceWorker } = useRegisterSW()
 watch(needRefresh, (val) => {
-  if (val) updateServiceWorker(true)
+  if (val) applyUpdateWhenIdle()
 })
+
+async function applyUpdateWhenIdle() {
+  const deadline = Date.now() + 5000
+  while (hasPendingWrites() && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 150))
+  }
+  updateServiceWorker(true)
+}
 
 // --- 2. PWA Install Logic ---
 const installEvent = ref(null)

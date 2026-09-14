@@ -21,9 +21,32 @@ const DB_VERSION = 3
 
 let _db = null
 
+// Writes in flight — checked by the service-worker auto-update logic (App.vue)
+// so a silently-triggered reload doesn't tear down the page mid-transaction.
+// Reloading closes the IndexedDB connection; a transaction opened just before
+// that lands throws "InvalidStateError: The database connection is closing."
+let _pendingWrites = 0
+export function hasPendingWrites() {
+  return _pendingWrites > 0
+}
+async function withWrite(fn) {
+  _pendingWrites++
+  try {
+    return await fn()
+  } finally {
+    _pendingWrites--
+  }
+}
+
 export async function getDB() {
   if (_db) return _db
   _db = await openDB(DB_NAME, DB_VERSION, {
+    // If the connection is ever closed out from under us (browser eviction,
+    // another tab's version upgrade, etc.), drop the stale handle so the
+    // next getDB() call reopens fresh instead of reusing a dead connection.
+    terminated() {
+      _db = null
+    },
     upgrade(db) {
       if (!db.objectStoreNames.contains('projects')) {
         db.createObjectStore('projects', { keyPath: 'id' })
@@ -85,25 +108,27 @@ export async function getProject(id) {
 }
 
 export async function saveProject(project) {
-  const db = await getDB()
+  return withWrite(async () => {
+    const db = await getDB()
 
-  // Strip Vue reactivity Proxy wrappers — IDB structured clone can't handle them.
-  // We round-trip through JSON for all serializable data, then re-attach the
-  // FileSystemDirectoryHandle separately (it IS cloneable but NOT JSON-serializable).
-  const { outputFolderHandle, ...serializable } = project
+    // Strip Vue reactivity Proxy wrappers — IDB structured clone can't handle them.
+    // We round-trip through JSON for all serializable data, then re-attach the
+    // FileSystemDirectoryHandle separately (it IS cloneable but NOT JSON-serializable).
+    const { outputFolderHandle, ...serializable } = project
 
-  let plain
-  try {
-    plain = JSON.parse(JSON.stringify(serializable))
-  } catch (e) {
-    console.error('[db] saveProject JSON serialization failed:', e)
-    plain = { ...serializable }
-  }
+    let plain
+    try {
+      plain = JSON.parse(JSON.stringify(serializable))
+    } catch (e) {
+      console.error('[db] saveProject JSON serialization failed:', e)
+      plain = { ...serializable }
+    }
 
-  await db.put('projects', {
-    ...plain,
-    outputFolderHandle: outputFolderHandle ?? null,
-    updatedAt: Date.now(),
+    await db.put('projects', {
+      ...plain,
+      outputFolderHandle: outputFolderHandle ?? null,
+      updatedAt: Date.now(),
+    })
   })
 }
 
@@ -121,32 +146,34 @@ export async function deleteProject(id) {
  * Fully delete a project and all its associated data.
  */
 export async function deleteProjectFull(project) {
-  const db = await getDB()
-  const tx = db.transaction(
-    ['projects', 'sentences', 'audio_sentences', 'audio_stitched'],
-    'readwrite'
-  )
+  return withWrite(async () => {
+    const db = await getDB()
+    const tx = db.transaction(
+      ['projects', 'sentences', 'audio_sentences', 'audio_stitched'],
+      'readwrite'
+    )
 
-  // Collect all sentence IDs from all paragraph groups
-  const sentenceIds = (project.paragraphGroups ?? [])
-    .flatMap(g => g.sentenceIds ?? [])
+    // Collect all sentence IDs from all paragraph groups
+    const sentenceIds = (project.paragraphGroups ?? [])
+      .flatMap(g => g.sentenceIds ?? [])
 
-  const groupIds = (project.paragraphGroups ?? []).map(g => g.id)
+    const groupIds = (project.paragraphGroups ?? []).map(g => g.id)
 
-  // Delete sentences
-  for (const sid of sentenceIds) {
-    await tx.objectStore('sentences').delete(sid)
-    await tx.objectStore('audio_sentences').delete(sid)
-  }
+    // Delete sentences
+    for (const sid of sentenceIds) {
+      await tx.objectStore('sentences').delete(sid)
+      await tx.objectStore('audio_sentences').delete(sid)
+    }
 
-  // Delete stitched blobs
-  for (const gid of groupIds) {
-    await tx.objectStore('audio_stitched').delete(gid)
-  }
+    // Delete stitched blobs
+    for (const gid of groupIds) {
+      await tx.objectStore('audio_stitched').delete(gid)
+    }
 
-  // Delete project record
-  await tx.objectStore('projects').delete(project.id)
-  await tx.done
+    // Delete project record
+    await tx.objectStore('projects').delete(project.id)
+    await tx.done
+  })
 }
 
 /**
@@ -155,60 +182,62 @@ export async function deleteProjectFull(project) {
  * Resets all sentence statuses to "pending".
  */
 export async function clearProjectAudio(project) {
-  const db = await getDB()
+  return withWrite(async () => {
+    const db = await getDB()
 
-  const sentenceIds = (project.paragraphGroups ?? [])
-    .flatMap(g => g.sentenceIds ?? [])
-  const groupIds = (project.paragraphGroups ?? []).map(g => g.id)
+    const sentenceIds = (project.paragraphGroups ?? [])
+      .flatMap(g => g.sentenceIds ?? [])
+    const groupIds = (project.paragraphGroups ?? []).map(g => g.id)
 
-  const tx = db.transaction(
-    ['sentences', 'audio_sentences', 'audio_stitched', 'projects'],
-    'readwrite'
-  )
+    const tx = db.transaction(
+      ['sentences', 'audio_sentences', 'audio_stitched', 'projects'],
+      'readwrite'
+    )
 
-  // Clear sentence blobs
-  for (const sid of sentenceIds) {
-    await tx.objectStore('audio_sentences').delete(sid)
-    // Reset sentence status
-    const sentence = await tx.objectStore('sentences').get(sid)
-    if (sentence) {
-      await tx.objectStore('sentences').put({
-        ...sentence,
-        status: 'pending',
-        audioKey: null,
-        durationMs: null,
-        startMs: null,
-        endMs: null,
-        wordTimings: null,
-      })
+    // Clear sentence blobs
+    for (const sid of sentenceIds) {
+      await tx.objectStore('audio_sentences').delete(sid)
+      // Reset sentence status
+      const sentence = await tx.objectStore('sentences').get(sid)
+      if (sentence) {
+        await tx.objectStore('sentences').put({
+          ...sentence,
+          status: 'pending',
+          audioKey: null,
+          durationMs: null,
+          startMs: null,
+          endMs: null,
+          wordTimings: null,
+        })
+      }
     }
-  }
 
-  // Clear stitched blobs and reset group status
-  const updatedGroups = (project.paragraphGroups ?? []).map(g => ({
-    ...g,
-    stitchStatus: 'pending',
-    stitchedAudioKey: null,
-    stitchedDiskFilename: null,
-    totalDurationMs: null,
-    startMs: null,
-    endMs: null,
-  }))
+    // Clear stitched blobs and reset group status
+    const updatedGroups = (project.paragraphGroups ?? []).map(g => ({
+      ...g,
+      stitchStatus: 'pending',
+      stitchedAudioKey: null,
+      stitchedDiskFilename: null,
+      totalDurationMs: null,
+      startMs: null,
+      endMs: null,
+    }))
 
-  for (const gid of groupIds) {
-    await tx.objectStore('audio_stitched').delete(gid)
-  }
+    for (const gid of groupIds) {
+      await tx.objectStore('audio_stitched').delete(gid)
+    }
 
-  const updatedProject = {
-    ...project,
-    paragraphGroups: updatedGroups,
-    audioSizeBytes: 0,
-    updatedAt: Date.now(),
-  }
-  await tx.objectStore('projects').put(updatedProject)
-  await tx.done
+    const updatedProject = {
+      ...project,
+      paragraphGroups: updatedGroups,
+      audioSizeBytes: 0,
+      updatedAt: Date.now(),
+    }
+    await tx.objectStore('projects').put(updatedProject)
+    await tx.done
 
-  return updatedProject
+    return updatedProject
+  })
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -220,8 +249,10 @@ export async function getSetting(key) {
 }
 
 export async function setSetting(key, value) {
-  const db = await getDB()
-  await db.put('settings', { key, value })
+  return withWrite(async () => {
+    const db = await getDB()
+    await db.put('settings', { key, value })
+  })
 }
 
 // ─── API Keys ─────────────────────────────────────────────────────────────────
@@ -232,20 +263,26 @@ export async function getApiKey(providerId) {
 }
 
 export async function saveApiKey(record) {
-  const db = await getDB()
-  await db.put('api_keys', record)
+  return withWrite(async () => {
+    const db = await getDB()
+    await db.put('api_keys', record)
+  })
 }
 
 export async function deleteApiKey(providerId) {
-  const db = await getDB()
-  await db.delete('api_keys', providerId)
+  return withWrite(async () => {
+    const db = await getDB()
+    await db.delete('api_keys', providerId)
+  })
 }
 
 // ─── Audio Blobs ──────────────────────────────────────────────────────────────
 
 export async function saveAudioSentence(sentenceId, blob) {
-  const db = await getDB()
-  await db.put('audio_sentences', { sentenceId, blob })
+  return withWrite(async () => {
+    const db = await getDB()
+    await db.put('audio_sentences', { sentenceId, blob })
+  })
 }
 
 export async function getAudioSentence(sentenceId) {
@@ -255,8 +292,10 @@ export async function getAudioSentence(sentenceId) {
 }
 
 export async function saveAudioStitched(groupId, blob) {
-  const db = await getDB()
-  await db.put('audio_stitched', { groupId, blob })
+  return withWrite(async () => {
+    const db = await getDB()
+    await db.put('audio_stitched', { groupId, blob })
+  })
 }
 
 export async function getAudioStitched(groupId) {
@@ -283,13 +322,17 @@ export async function getVoicePreview(key) {
 }
 
 export async function saveVoicePreview(key, blob) {
-  const db = await getDB()
-  await db.put('voice_previews', { key, blob })
+  return withWrite(async () => {
+    const db = await getDB()
+    await db.put('voice_previews', { key, blob })
+  })
 }
 
 export async function deleteVoicePreview(key) {
-  const db = await getDB()
-  await db.delete('voice_previews', key)
+  return withWrite(async () => {
+    const db = await getDB()
+    await db.delete('voice_previews', key)
+  })
 }
 
 /** Returns all cached preview keys — used to show cached indicator in the voice picker */
@@ -313,20 +356,22 @@ export async function getSolution(id) {
 }
 
 export async function saveSolution(solution) {
-  const db = await getDB()
+  return withWrite(async () => {
+    const db = await getDB()
 
-  // Strip Vue reactivity Proxy wrappers — IDB structured clone can't handle them.
-  let plain
-  try {
-    plain = JSON.parse(JSON.stringify(solution))
-  } catch (e) {
-    console.error('[db] saveSolution JSON serialization failed:', e)
-    plain = { ...solution }
-  }
+    // Strip Vue reactivity Proxy wrappers — IDB structured clone can't handle them.
+    let plain
+    try {
+      plain = JSON.parse(JSON.stringify(solution))
+    } catch (e) {
+      console.error('[db] saveSolution JSON serialization failed:', e)
+      plain = { ...solution }
+    }
 
-  await db.put('solutions', {
-    ...plain,
-    updatedAt: Date.now(),
+    await db.put('solutions', {
+      ...plain,
+      updatedAt: Date.now(),
+    })
   })
 }
 
@@ -338,30 +383,32 @@ export async function saveSolution(solution) {
  * like deleting a folder deletes its contents.
  */
 export async function deleteSolutionFull(solution) {
-  const db = await getDB()
-  const tx = db.transaction(
-    ['solutions', 'projects', 'sentences', 'audio_sentences', 'audio_stitched'],
-    'readwrite'
-  )
+  return withWrite(async () => {
+    const db = await getDB()
+    const tx = db.transaction(
+      ['solutions', 'projects', 'sentences', 'audio_sentences', 'audio_stitched'],
+      'readwrite'
+    )
 
-  const projectsStore = tx.objectStore('projects')
-  for (const projectId of solution.projectOrder ?? []) {
-    const project = await projectsStore.get(projectId)
-    if (!project) continue
+    const projectsStore = tx.objectStore('projects')
+    for (const projectId of solution.projectOrder ?? []) {
+      const project = await projectsStore.get(projectId)
+      if (!project) continue
 
-    const sentenceIds = (project.paragraphGroups ?? []).flatMap(g => g.sentenceIds ?? [])
-    const groupIds     = (project.paragraphGroups ?? []).map(g => g.id)
+      const sentenceIds = (project.paragraphGroups ?? []).flatMap(g => g.sentenceIds ?? [])
+      const groupIds     = (project.paragraphGroups ?? []).map(g => g.id)
 
-    for (const sid of sentenceIds) {
-      await tx.objectStore('sentences').delete(sid)
-      await tx.objectStore('audio_sentences').delete(sid)
+      for (const sid of sentenceIds) {
+        await tx.objectStore('sentences').delete(sid)
+        await tx.objectStore('audio_sentences').delete(sid)
+      }
+      for (const gid of groupIds) {
+        await tx.objectStore('audio_stitched').delete(gid)
+      }
+      await projectsStore.delete(projectId)
     }
-    for (const gid of groupIds) {
-      await tx.objectStore('audio_stitched').delete(gid)
-    }
-    await projectsStore.delete(projectId)
-  }
 
-  await tx.objectStore('solutions').delete(solution.id)
-  await tx.done
+    await tx.objectStore('solutions').delete(solution.id)
+    await tx.done
+  })
 }
