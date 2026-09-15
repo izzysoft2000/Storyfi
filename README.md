@@ -1,4 +1,6 @@
-![Demo App](public/Animation.gif)
+<p align="center">
+  <img src="public/Animation.gif" alt="Demo App">
+</p>
 
 # Storyfi
 
