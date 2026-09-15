@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.2.6**
+Current version: **v3.2.7**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
