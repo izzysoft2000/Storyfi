@@ -4,7 +4,7 @@
 
 Storyfi transforms a script written in Markdown into a fully produced, multi-character audio file. Each paragraph of dialogue is assigned to a voice role, sent to a TTS engine, and stitched into a single gapless MP3 — all in the browser, no server required.
 
-Current version: **v3.2.7**
+Current version: **v3.2.8**
 Live at: **https://storyfi.izzysoft.workers.dev/**
 
 ---
@@ -173,6 +173,7 @@ storyfi/
 - Per-role: colour, label, TTS provider, voice picker with preview
 - Language + gender filter pills; drag-to-reorder roles
 - Per-role MiniMax model selector (all 8 models) + emotion, speed, pitch, volume
+- New Project's 3 default cast members (Narrator/Actor 1/Actor 2) read the Settings default provider (`activeProvider`), not a hardcoded MiniMax — matches how `addRole()` already inherited it for roles added later
 
 ### Generation Pipeline
 - Paragraph = segment; consecutive same-role paragraphs grouped under one playlist header

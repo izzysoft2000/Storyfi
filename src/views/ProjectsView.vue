@@ -258,7 +258,7 @@ async function confirmNewProject() {
   if (!title) return
   newProjectModal.value = false
 
-  const p = store.createBlankProject(title)
+  const p = await store.createBlankProject(title)
   p.solutionId = solution.value.id
   await saveProject(p)
 

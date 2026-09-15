@@ -26,9 +26,9 @@ export const useProjectStore = defineStore('project', () => {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  function defaultVoiceAssignment() {
+  function defaultVoiceAssignment(providerId = 'minimax') {
     return {
-      providerId: 'minimax',
+      providerId,
       voiceId:    null,
       voiceName:  null,
       settings: {
@@ -163,8 +163,9 @@ export const useProjectStore = defineStore('project', () => {
 
   // ─── Factory: create a new blank project ────────────────────────────────────
 
-  function createBlankProject(title = 'Untitled Project') {
+  async function createBlankProject(title = 'Untitled Project') {
     const now = Date.now()
+    const providerId = (await getSetting('activeProvider')) ?? 'minimax'
     return {
       id:           uuid(),
       title,
@@ -173,9 +174,9 @@ export const useProjectStore = defineStore('project', () => {
       sourceMarkdown: '',
       editorState:  null,
       cast: [
-        { id: 'narrator', label: 'Narrator', color: ROLE_COLORS[0], voiceAssignment: defaultVoiceAssignment() },
-        { id: 'actor_1',  label: 'Actor 1',  color: ROLE_COLORS[1], voiceAssignment: defaultVoiceAssignment() },
-        { id: 'actor_2',  label: 'Actor 2',  color: ROLE_COLORS[2], voiceAssignment: defaultVoiceAssignment() },
+        { id: 'narrator', label: 'Narrator', color: ROLE_COLORS[0], voiceAssignment: defaultVoiceAssignment(providerId) },
+        { id: 'actor_1',  label: 'Actor 1',  color: ROLE_COLORS[1], voiceAssignment: defaultVoiceAssignment(providerId) },
+        { id: 'actor_2',  label: 'Actor 2',  color: ROLE_COLORS[2], voiceAssignment: defaultVoiceAssignment(providerId) },
       ],
       paragraphGroups:              [],
       audioSizeBytes:               0,
