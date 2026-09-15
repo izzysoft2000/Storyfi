@@ -1,3 +1,7 @@
+<p align="center">
+![Demo App](images/Animation.gif)
+</p>
+
 # Storyfi
 
 **Multi-voice audio production from Markdown — browser-native PWA.**
