@@ -1,4 +1,4 @@
-![Demo App](images/Animation.gif)
+![Demo App](public/Animation.gif)
 
 # Storyfi
 
