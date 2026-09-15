@@ -1,6 +1,4 @@
-<p align="center">
 ![Demo App](images/Animation.gif)
-</p>
 
 # Storyfi
 
